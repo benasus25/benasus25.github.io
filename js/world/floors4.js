@@ -186,8 +186,8 @@ Floors.fx = function (F) {
   Props.treeSculpture(F, -7.5, 9.3);
   ws(F, -2.5, 9.3, Math.PI, { monitors: 2, screens: ["chart", "dash"], npc: { quotes: "dev" } });
   P(F, "loungeDesignSofa", 2.5, 8.8, 0, { tint: { carpet: 0x3a4a5e, metal: 0x2a2e36 } });
-  Props.container(F, 6.4, 0, 9.8, 0.1, 0x2f6e9c, "S3");
-  Props.container(F, 8.7, 0, 9.4, -0.15, 0x8c5a2e, "CENSUS");
+  Props.container(F, 5.85, 0, 9.9, HP, 0x2f6e9c, "S3");
+  Props.container(F, 9.15, 0, 9.9, HP, 0x8c5a2e, "CENSUS");
   for (const rx of [11.0, 14.0]) Kit.serverRack(F, rx, 10.4, Math.PI, { alert: rx > 12 });
   F.npcSpecs.push({ model: "character-male-b", x: 12.5, z: 8.8, ry: Math.PI, behavior: "idle", hold: "laptop", quotes: "dev", greeting: "Camunda says the workflow is green." });
 

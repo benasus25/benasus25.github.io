@@ -415,7 +415,7 @@ const Game = {
     const meta = idx === "P" ? { name: "The Plaza", theme: "outside, in the rain", track: CONTENT.plazaTrack } : CONTENT.floors[idx];
     if (Game.state !== "cinematic" && meta) {
       UI.floorIntro(idx, meta);
-      const gl = CONTENT.guideLines[idx === "P" ? "plaza" : "f" + idx];
+      const gl = idx !== 0 || Game.guide.met ? CONTENT.guideLines[idx === "P" ? "plaza" : "f" + idx] : null;
       if (gl && !Game["_guided" + idx]) { Game["_guided" + idx] = true; setTimeout(() => Game.guideSay(gl), 2600); }
     }
     Game.renderer.compile(Game.scene, Game.camera);
@@ -450,11 +450,18 @@ const Game = {
     Game.state = "transition";
     if (typeof Tutorial !== "undefined") Tutorial.notify("elevator");
     UI.elevatorRide(idx, () => {
-      const F = Game.floorsBuilt[idx] || Game.build(idx);
-      const sp = F.elevator ? F.elevator.spawn : null;
-      Game.loadFloor(idx, { spawn: sp });
-      Game.state = "play";
-      if (F.elevator) Game.arrivalShot(F);
+      try {
+        const F = Game.floorsBuilt[idx] || Game.build(idx);
+        const sp = F.elevator ? F.elevator.spawn : null;
+        Game.loadFloor(idx, { spawn: sp });
+        Game.state = "play";
+        if (F.elevator) Game.arrivalShot(F);
+      } catch (e) {
+        console.error(e);
+        Game.state = "play"; Game.cam.mode = "follow";
+        UI.els["lift-ov"].classList.add("hidden");
+        UI.say("That floor is being renovated — try another.");
+      }
     });
   },
 
@@ -992,7 +999,7 @@ const Game = {
                                          - Math.hypot(q.position.x - fx, q.position.z - fz) / Math.max(4, q.distance));
     const want = new Set(ranked.slice(0, pool.length));
     const snap = Game._lightSnap; Game._lightSnap = false;
-    for (const a of A) a.w = snap ? (want.has(a) ? 1 : 0) : U.damp(a.w, want.has(a) ? 1 : 0, 5, dt);
+    for (const a of A) a.w = snap ? (want.has(a) ? 1 : 0) : U.damp(a.w, want.has(a) && (a.slot || pool.some((s) => !s.a)) ? 1 : 0, 5, dt);
     for (const s of pool) if (s.a && (s.a.w < 0.02 && !want.has(s.a))) { s.a.slot = null; s.a = null; }
     for (const a of ranked.slice(0, pool.length)) {
       if (a.slot) continue;

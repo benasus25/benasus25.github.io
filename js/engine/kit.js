@@ -1400,7 +1400,7 @@ const Kit = {
     F.dynamic.push({ update(dt, t) {
       const k = 1 + Math.sin(t * 13 + seed) * 0.12 + Math.sin(t * 7.3 + seed) * 0.08;
       f1.scale.set(k, 1.9 * k, k); f2.scale.set(1 / k, 1.6 / k, 1 / k);
-      if (l) l.intensity = 1.1 * k;
+      if (l) l.intensity = Kit.LK * 1.1 * k;
     }});
     F.decor.push(g);
     return g;

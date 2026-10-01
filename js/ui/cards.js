@@ -264,7 +264,7 @@ const Cards = {
           + (o.lesson ? `<blockquote class="c-quote">“${E(o.lesson)}”</blockquote>` : "")
           + Cards.links([{ label: /youtube/.test(o.url) ? "Watch the demo" : "Open on GitHub", url: o.url }]);
       case "repoIndex":
-        return head("THE ARCHIVE · FLOOR 2", "Every repo, on one shelf", `${C.repos.length} public projects from <a target="_blank" rel="noopener" href="${C.links.github}">github.com/benasus25</a> — click any to open it.`)
+        return head("THE ARCHIVE · FLOOR 3", "Every repo, on one shelf", `${C.repos.length} public projects from <a target="_blank" rel="noopener" href="${C.links.github}">github.com/benasus25</a> — click any to open it.`)
           + `<div class="c-rows">${C.repos.map((r, i) => `<button class="c-row" onclick="Cards.open('repo', CONTENT.repos[${i}], { source: 'directory' })"><b>${E(r.name)}</b><span class="c-lang">${E(r.lang)} · ${E(r.year)}</span><span class="c-desc">${E(r.desc)}</span></button>`).join("")}</div>`;
       case "oss":
         return head(E(o.code), E(o.name), md(o.tagline))
@@ -286,7 +286,7 @@ const Cards = {
           + `<div class="c-act"><button class="btn sm ghost" onclick="Cards.open('matrix', { kind: 'matrix', id: 'matrix' }, { source: 'directory' })">See the full stack matrix →</button></div>`;
       }
       case "matrix":
-        return head("SKILLS & STACK · FLOOR 4", "The full stack matrix", "Everything I work with, grouped. Production use first.")
+        return head("SKILLS & STACK · FLOOR 1", "The full stack matrix", "Everything I work with, grouped. Production use first.")
           + `<div class="c-matrix">${C.stack.map(([g, items]) => `<div><h5>${E(g)}</h5>${Cards.chips(items)}</div>`).join("")}</div>`;
       case "trophy": {
         let extra = "";
@@ -302,7 +302,7 @@ const Cards = {
       }
       case "edu": {
         const d = o;
-        return head("EDUCATION · FLOOR 3", E(d.title), E(d.sub))
+        return head("EDUCATION · FLOOR 2", E(d.title), E(d.sub))
           + `<p>${md(d.body)}</p>`
           + Cards.sec("Core coursework", Cards.chips(d.coursework))
           + Cards.sec("Leadership", `<div class="c-rows">${d.roles.map((r) => `<div class="c-row static"><b>${E(r.name)}</b><span class="c-lang">${E(r.when)}</span><span class="c-desc">${E(r.what)}</span></div>`).join("")}</div>`)
@@ -320,15 +320,15 @@ const Cards = {
           + `<p>Then: Delhi Technological University — B.Tech, Computer Engineering, 8.83 CGPA.</p>`
           + `<div class="c-act"><button class="btn sm ghost" onclick="Cards.open('edu', CONTENT.education.dtu, { source: 'directory' })">DTU →</button></div>`;
       case "timeline":
-        return head("HALL OF GROWTH · FLOOR 3", "2018 → now", "The short version of a long climb.")
+        return head("HALL OF GROWTH · FLOOR 2", "2018 → now", "The short version of a long climb.")
           + `<div class="c-time">${C.education.growth.map((g) => `<div><b>${E(g.year)}</b><span>${E(g.label)}</span><i>${E(g.note)}</i></div>`).join("")}</div>`;
       case "reading": {
         const books = o.cat ? C.books.filter((b) => b.cat === o.cat) : C.books;
-        return head("THE KNOWLEDGE VAULT · FLOOR 5", o.cat ? E(o.cat) : "The reading list", "Each with one line on why. Click any for the full note.")
+        return head("THE READING LIST · FLOOR 2", o.cat ? E(o.cat) : "The reading list", "Each with one line on why. Click any for the full note.")
           + `<div class="c-rows">${books.map((b) => `<button class="c-row" onclick="UI.openBook(CONTENT.books[${C.books.indexOf(b)}])"><b>${E(b.title)}</b><span class="c-lang">${E(b.author)}</span><span class="c-desc">${E((b.why.match(/^[^.!?]*[.!?]/) || [b.why])[0])}</span></button>`).join("")}</div>`;
       }
       case "exec":
-        return head("EXECUTIVE SUITE · FLOOR 7", "What's next", "Where my head is at, and how to reach me.")
+        return head("THE PENTHOUSE · FLOOR 4", "What's next", "Where my head is at, and how to reach me.")
           + `<div class="c-rows">${o.now.map(([k, v]) => `<div class="c-row static"><b>${E(k)}</b><span class="c-desc">${E(v)}</span></div>`).join("")}</div>`
           + Cards.sec("The goals board", Cards.chips(o.goals))
           + `<div class="c-links"><button class="btn primary" onclick="Cards.close();UI.openGuestbook(false)">✉ Leave a note</button><a class="btn" href="${C.links.email}">Email</a><a class="btn" target="_blank" rel="noopener" href="${C.links.linkedin}">LinkedIn ↗</a>${C.links.resume ? `<a class="btn" href="${C.links.resume}" download>Résumé PDF</a>` : ""}</div>`;

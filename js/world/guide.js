@@ -97,7 +97,7 @@ const Guide = {
     const F = Game.F, p = Game.player, g = Game.guide;
     const el = document.getElementById("caption");
     if (!el) return;
-    if (!F || Game.state !== "play") { if (Guide.cur) Guide.show(null); return; }
+    if (!F || Game.state !== "play") { if (Guide.cur) { Guide.show(null); Guide.cur = null; if (g) g.focus = null; } return; }
     let best = null, bd = 1e9;
     for (const it of F.interact) {
       if (!it.ref) continue;

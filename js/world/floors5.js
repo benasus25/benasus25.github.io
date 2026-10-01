@@ -394,8 +394,8 @@ extend("f0", (F) => {
       Type.fit(c, title, 800, w * 0.14, w - pad * 2, "Fraunces, Georgia, serif"); c.fillStyle = "#fff4e0"; c.fillText(title, pad, h * 0.15);
       let yy = h * 0.235;
       for (const [a, b] of lines) {
-        c.font = `800 ${w * 0.058}px ${Kit.FONT}`; c.fillStyle = "#fff"; c.fillText(a, pad, yy);
-        c.font = `500 ${w * 0.045}px ${Kit.FONT}`; c.fillStyle = "rgba(255,244,224,0.7)"; c.fillText(b, pad, yy + w * 0.06);
+        Type.fit(c, a, 800, w * 0.058, w - pad * 2); c.fillStyle = "#fff"; c.fillText(a, pad, yy);
+        Type.fit(c, b, 500, w * 0.045, w - pad * 2); c.fillStyle = "rgba(255,244,224,0.7)"; c.fillText(b, pad, yy + w * 0.06);
         yy += w * 0.16;
       }
       c.font = `800 ${w * 0.2}px ${Kit.FONT}`; c.fillStyle = col; c.fillText(big[0], pad, h * 0.84);
