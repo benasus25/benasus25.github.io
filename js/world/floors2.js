@@ -47,7 +47,7 @@ const Props = {
       if (Math.random() < dt * 1.5) Game.sparkle(x + U.rand(-0.5, 0.5), U.rand(1, 2.6), z + U.rand(-0.5, 0.5), 0x9fdcff, 2);
     }});
     Kit.collide(F, x, z, 4.0, 4.0);
-    Kit.hot(F, { x, z: z + 2.4, y: 3.2, r: 2.6, label: "The energy core", fn: () => UI.say("Runs the whole floor. Power source: curiosity, plus a suspicious amount of coffee.") });
+    Kit.hot(F, { x, z: z + 2.4, y: 3.2, r: 2.6, label: "The core — what powers this floor", ref: CONTENT.core, focus: { x, y: 1.6, z }, fn: () => { AudioSys.sfx("open"); UI.panel(CONTENT.core); } });
   },
 
   roboArm(F, x, z, col = 0xff9e4d) {
@@ -323,14 +323,14 @@ const Props = {
   },
 };
 
-/* F1 (Engineering) moved: the Experience floor lives in floors4.js (Floors.fx). */
+/* F1 (Engineering) moved: the Experience floor is the enfilade in floors7.js (Floors.fx2). */
 
-/* F2 (closed-room Projects) became the open Projects floor: Floors.fp in floors6.js. */
+/* F2 (closed-room Projects) became the Projects rotunda: Floors.fp2 in floors7.js. */
 
 /* F3 (the old Hogwarts floor) became the Great Hall: Floors.fe in floors5.js. */
 
 /* F4 (Workshop), F5 (Knowledge Vault) and F6 (Precinct) were merged away in v4:
-   skills → the stack wall (floors4.js), books → the Hogwarts library, career → Floors.fx. */
+   skills → the stack wall (floors4.js), books → the Hogwarts library, career → Floors.fx2. */
 
 /* ============================================================
    F7 — EXECUTIVE OFFICE · Real Madrid Suite

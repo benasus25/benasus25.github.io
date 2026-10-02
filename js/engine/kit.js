@@ -96,7 +96,9 @@ const Kit = {
   },
   T(p, R, r, mat, x, y, z, o = {}) {
     const arc = o.arc || Math.PI * 2;
-    const m = new THREE.Mesh(Kit.geo(`t${R},${r},${arc}`, () => new THREE.TorusGeometry(R, r, 10, 28, arc)), mat);
+    // big rings need more segments or they read as polygons; thin ones need fewer around the tube
+    const ts = Math.max(28, Math.round(R * 14 * (arc / (Math.PI * 2)))), rs = r < 0.05 ? 5 : 10;
+    const m = new THREE.Mesh(Kit.geo(`t${R},${r},${arc},${ts}`, () => new THREE.TorusGeometry(R, r, rs, ts, arc)), mat);
     m.position.set(x, y, z);
     p.add(Kit._prep(m, o));
     return m;
@@ -458,8 +460,9 @@ const Kit = {
       Kit.S(hinge, 0.03, Kit.gold(), w - 0.24, 1.02, -0.05);
       F.dynamic.push({ update(dt) {
         const near = Kit.someoneNear(F, cx, cz, 2.0);
-        st.open += ((near ? 1 : 0) - st.open) * Math.min(1, dt * 4);
-        hinge.rotation.y = ry - st.open * 1.45;
+        // a hinged door has weight: it swings past a touch and settles
+        { const k = 26, c = 2 * 0.55 * Math.sqrt(k); st.v = (st.v || 0) + (k * ((near ? 1 : 0) - st.open) - c * (st.v || 0)) * dt; st.open += st.v * dt; }
+        hinge.rotation.y = ry - Math.max(0, st.open) * 1.45;
       }});
     } else {
       const glass = Kit.glassM(0xcfe8ff, 0.22);
@@ -476,7 +479,8 @@ const Kit = {
       }
       F.dynamic.push({ update(dt) {
         const near = Kit.someoneNear(F, cx, cz, 2.2);
-        st.open += ((near ? 1 : 0) - st.open) * Math.min(1, dt * 5);
+        // sliding glass eases out and cushions in
+        { const k = 34, c = 2 * 0.85 * Math.sqrt(k); st.v = (st.v || 0) + (k * ((near ? 1 : 0) - st.open) - c * (st.v || 0)) * dt; st.open += st.v * dt; }
         for (const { lg, s } of leaves) {
           const off = s * (w / 4 + st.open * (w / 2 - 0.1));
           lg.position.set(cx + ux * off, 0, cz + uz * off);
@@ -1348,7 +1352,7 @@ const Kit = {
     const st = { open: 0, want: 0 };
     F.dynamic.push({ update(dt) {
       st.want = Math.hypot(Game.player.x - fx, Game.player.z - fz) < 2.3 ? 1 : st.hold ? 1 : 0;
-      st.open += (st.want - st.open) * Math.min(1, dt * 3.5);
+      { const k = 18, c = 2 * 0.9 * Math.sqrt(k); st.v = (st.v || 0) + (k * (st.want - st.open) - c * (st.v || 0)) * dt; st.open += st.v * dt; }
       dl.position.x = -0.55 - st.open * 1.0;
       dr.position.x = 0.55 + st.open * 1.0;
     }});
@@ -1574,6 +1578,16 @@ const Kit = {
       c.fillText("▸  CLICK FOR THE FULL CASE STUDY", pad, ch * 0.955);
       c.globalAlpha = 1;
     }, x, y, z, ry, { fps: o.fps || 4, px: o.px || 960, glow: 1.05 });
+    // staging: the wall idles dim and wakes (with a brief flicker) as you walk up to it
+    { const mat = scr.material, pw = { lv: 0.3, boot: 0 };
+      F.dynamic.push({ update(dt, t) {
+        const p = Game.player, d = Math.hypot(p.x - x, p.z - z), want = d < 12 ? 1 : 0.3;
+        if (want > pw.lv + 0.35 && pw.boot <= 0) pw.boot = 0.5;
+        pw.lv = U.damp(pw.lv, want, 2.6, dt);
+        let f = pw.lv;
+        if (pw.boot > 0) { pw.boot -= dt; f *= Math.sin(t * 70) > -0.2 ? 1 : 0.35; }
+        mat.color.setScalar(1.05 * f);
+      } }); }
     Kit.light(F, x + nx * 1.0, y - 0.2, z + nz * 1.0, lab.accent, 0.9, 5.5);
     if (o.interact !== false) Kit.hot(F, { x: x + nx * 1.2, z: z + nz * 1.2, y: y + h / 2 + 0.35, r: 2.3, label: `${lab.name} — full case study`, node: null, ref: lab, focus: { x, y, z }, fn: () => { AudioSys.sfx("open"); UI.panel(lab); } });
     return scr;

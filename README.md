@@ -39,9 +39,9 @@ Live at **https://benasus25.github.io/** (GitHub Pages).
 |---|---|---|
 | Plaza | rain, red carpet | the tower, the street, the way in |
 | F0 Reception | *The Continental* | **you meet Sparsh in person — then he folds into the glowing orb that guides you** · two big signposts: **Experience → F1**, **Education → F2** · NOVA, the directory totem, guest book |
-| F1 Experience | *Avengers Tower* | **three walk-through chapters** — Xtreme → Pocketpills → Sprinklr — each with a lit gateway, a 3D centrepiece, the numbers on plinths, the full detail wall, and a "Chapter N" title as you step in · **six open bays, one per system built at Pocketpills** · **the stack wall** |
+| F1 Experience | *Avengers Tower* | **an enfilade: a foyer, then one room per job in a straight line through stone arches** — Xtreme (a ship's deck, sea charts, a route globe) → Pocketpills (bright pharmacy terrazzo, the floating capsule, **the six systems I built along one wall**) → Sprinklr (glass to the city, the CX core, **the stack I ship with**) · each room has the full detail wall, its numbers on plinths, and a "Chapter N" title as you step in · **a gallery along the south side reaches every room directly**, and the foyer board's "take me there" runs you straight to any chapter |
 | F2 Education | *The Great Hall* | school at the entrance (CBSE XII, 90.4%) → **the degree year by year along a candlelit aisle (2019 → 2023)** → **the graduation stage: DTU, B.Tech Computer Engineering, 8.83 CGPA** · north: hall of achievements (448 LeetCode, CodeKaze 315, Hack with CW, IC²) · south: leadership (Sahitya, Enactus), core coursework, **the reading list** |
-| F3 Projects | *Stark Labs* | **sprHarness**, **Intra-Organisational Server**, **Voyage Optimiser**, the open-source bench, **12 real GitHub repos** |
+| F3 Projects | *Stark Labs* | **a round glass rotunda**: the energy core on a dais at the centre (and what it runs on), **sprHarness**, **Intra-Organisational Server**, **Voyage Optimiser** standing around it, a brass compass in the floor, the archive of **12 real GitHub repos** and the open-source bench on the south arc |
 | F4 Penthouse | *Real Madrid suite* | what's next, the goals board, contact, a balcony in the rain |
 
 Walk up to anything gold and a **caption** appears (title, one line, the numbers) while the orb tells you about it — no key press needed. `E` or a click opens the full case study. Every floor also has a collapsible **checklist** (top-left) of its exhibits.
@@ -76,15 +76,18 @@ js/world/guide.js        the orb guide, the "meet Sparsh" intro, walk-up caption
 js/world/floors.js       plaza + reception, shared room helpers (shell, workstations, lounges)
 js/world/floors2.js      Projects, Penthouse
 js/world/floors3.js      set dressing (lobby totem, penthouse extras)
-js/world/floors4.js      the Experience floor: detail walls, systems bays, stack wall
-js/world/floors5.js      Experience chapters, the Education Great Hall, the lobby signposts
+js/world/floors4.js      shared type + career-panel + stack-tile helpers, penthouse arrival
+js/world/floors5.js      chapter centrepieces, the Education Great Hall, the lobby signposts
+js/world/floors7.js      the Experience enfilade, the Projects rotunda, the Great Hall colonnade
 js/ui/ui.js              prompts, elevator, books, guest book, NOVA, tutorial
 js/ui/cards.js           case-study cards, floor checklists, the one-page résumé
 js/main.js               splash → intro → tutorial
 ```
 
 Under the hood:
-- **Spring-arm camera** in 4.8 m rooms: high enough to show the whole character and most of the room, never outside the building or through a wall; it watches you through doorways and cuts cleanly inside.
+- **Spring-arm camera** in 4.8 m rooms: high enough to show the whole character and most of the room, never outside the building or through a wall. It dips under a lintel to follow you through a doorway, cuts to a composed frame once you're through, and when a wall is close behind you it goes over-the-shoulder instead of looking down at your head.
+- **Character animation.** Idle, walk and run are a blend tree driven by measured ground speed, with playback rate matched to the clips' stride (measured, not guessed) and walk/run kept in phase so blends don't scissor the legs. On top: gestures as layers, a procedural head-and-torso look-at (people look at whoever is talking or whatever you're reading), and a spring on the body that leans into starts, stops and turns. NPCs steer with a turn rate and ease in and out of stops; they step round to face you instead of spinning on the spot.
+- **Staging.** You meet Sparsh with a walk-in, a cut to a two-shot, gestures and a nod back, then a squash-and-stretch transformation into the orb. You step out of the lift on every floor while the camera eases back from inside the car.
 - **Performance governor.** Pixel budget per quality level, half-resolution AO and bloom, 2× MSAA, and a fixed pool of 8 point lights handed to the fixtures nearest the camera; resolution adapts live to keep ~60 fps.
 - **Circle-vs-box movement.** You slide along walls and round corners. Click-to-walk uses A* with corner cutting and stuck detection.
 - **Occluder fade.** Props that come between you and the lens turn translucent.

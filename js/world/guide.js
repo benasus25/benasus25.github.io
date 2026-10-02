@@ -70,8 +70,15 @@ const Guide = {
     }
     g.pulse = Math.max(0, g.pulse - dt * 1.2);
     const s = 1 + g.pulse * 0.45 + Math.sin(t * 6.3) * 0.04;
-    g.core.scale.setScalar(s);
-    g.glow.scale.setScalar(0.8 * s * (1 + g.pulse * 0.6));
+    // squash & stretch along the direction of travel (a ball of light still obeys the principles)
+    const spd = g.vel.length(), st2 = U.clamp(spd * 0.11, 0, 0.75);
+    g.stretch = U.damp(g.stretch || 0, st2, 10, dt);
+    if (spd > 0.05) g.core.lookAt(r.x + g.vel.x, r.y + g.vel.y, r.z + g.vel.z);
+    g.core.scale.set(s / (1 + g.stretch * 0.45), s / (1 + g.stretch * 0.45), s * (1 + g.stretch));
+    // the glow sprite stretches the same way on screen
+    const a2 = r.clone().project(Game.camera), b2 = r.clone().sub(g.vel.clone().multiplyScalar(0.1)).project(Game.camera);
+    g.glow.material.rotation = Math.atan2((a2.y - b2.y) / Game.camera.aspect * 1, a2.x - b2.x);
+    g.glow.scale.set(0.8 * s * (1 + g.pulse * 0.6) * (1 + g.stretch * 0.9), 0.8 * s * (1 + g.pulse * 0.6) / (1 + g.stretch * 0.4), 1);
     g.halo.scale.setScalar(1.9 + Math.sin(t * 1.7) * 0.15 + g.pulse * 0.9);
     g.halo.material.opacity = 0.22 + g.pulse * 0.25;
     // tail
@@ -150,7 +157,10 @@ const Guide = {
     for (const n of hidden) n.root.visible = false;
     if (p.tag) p.tag.visible = false;
     p.ry = Math.PI; p.root.rotation.set(0, Math.PI, 0);
-    me.root.position.set(sx, 0, sz); me.root.rotation.y = 0;
+    // he walks down the carpet toward you on a gentle curve, finds his mark, and turns to you
+    const ex0 = sx + 0.7, ez0 = sz - 4.2, cx0 = sx + 0.8, cz0 = sz - 1.6;
+    me.root.position.set(ex0, 0, ez0); me.root.rotation.y = Math.atan2(sx - ex0, sz - ez0);
+    me._lx = ex0; me._lz = ez0; me._lry = me.root.rotation.y;
     F.group.add(me.root); me.play("idle", 0);
     const nameTag = new THREE.Sprite(new THREE.SpriteMaterial({ map: Kit.canvasTex(512, 96, (c) => {
       c.font = `800 44px ${Kit.FONT}`; c.textAlign = "center"; c.shadowColor = "rgba(0,0,0,0.7)"; c.shadowBlur = 10;
@@ -158,21 +168,52 @@ const Guide = {
       c.font = `600 22px ${Kit.FONT}`; c.fillStyle = "rgba(255,244,224,0.85)"; c.fillText("the one who built this place", 256, 84);
     }), transparent: true, depthWrite: false }));
     nameTag.scale.set(1.5, 0.28, 1); nameTag.position.y = People.H + 0.95; me.root.add(nameTag);
-    // a side-on two-shot (you on the right, me on the left), slowly pushing in on me
+    // shot 1: over your right shoulder, watching him arrive
     const rig = Game.rig, mz = (p.z + sz) / 2;
-    rig.pos.set(p.x - 3.6, 1.8, mz + 1.5); rig.look.set(p.x, 1.2, mz - 0.1);
+    rig.pos.set(p.x + 1.5, 2.05, p.z + 3.1); rig.look.set(sx + 0.5, 1.1, sz - 1.2);
     let tick = 0;
-    const animate = { update(dt) { me.mixer.update(dt); me.tickBubble(dt); tick += dt; } };
+    // eyes: he looks at you; your eyes follow him in — and later, the orb
+    const eyes = { x: ex0, y: 1.5, z: ez0 };
+    let watch = me.root;
+    me.lookTarget = { x: p.x, y: 1.45, z: p.z };
+    p.lookOverride = eyes;
+    const animate = { update(dt) {
+      if (me.root.parent) { me.animate(dt); me.tickBubble(dt); }
+      tick += dt;
+      // a closed set: anyone who wanders toward the scene steps out of it until we're done
+      for (const n of F.npcs) {
+        if (!n.root.visible) continue;
+        if (Math.hypot(n.root.position.x - p.x, n.root.position.z - (sz + p.z) / 2) < 6.5) { n.root.visible = false; hidden.push(n); }
+      }
+      const w = watch.position; eyes.x = w.x; eyes.z = w.z; eyes.y = watch === me.root ? 1.5 : w.y;
+    } };
     F.dynamic.push(animate);
     const line = (txt, dur) => { me.say(txt, dur); UI.say("Sparsh — " + txt, dur * 1000); AudioSys.sfx("pop"); };
     const glow = { k: 0 }, mats = [];
     const tl = gsap.timeline();
     Guide._meetTl = tl;
-    tl.to(rig.pos, { x: p.x - 2.6, y: 1.65, z: mz + 0.7, duration: 8, ease: "sine.inOut" }, 0);
-    tl.to(rig.look, { x: p.x, y: 1.25, z: mz - 0.45, duration: 8, ease: "sine.inOut" }, 0);
-    tl.call(() => { me.play("emote-yes", 0.2, true); line("Hey! I'm Sparsh — welcome to my HQ.", 2.6); }, null, 0.5);
-    tl.call(() => { me.play("idle", 0.3); line("Everything I've built is somewhere in this building.", 2.6); }, null, 3.2);
-    tl.call(() => { me.play("interact-right", 0.2, true); line("I'll show you around — in a slightly more portable form.", 2.4); }, null, 5.9);
+    // the walk: ease in, ease out — the body leans into the start and settles at the stop
+    const walk = { u: 0 };
+    const bez = (u) => { const q = 1 - u; return [q * q * ex0 + 2 * q * u * cx0 + u * u * sx, q * q * ez0 + 2 * q * u * cz0 + u * u * sz]; };
+    tl.to(walk, { u: 1, duration: 2.0, ease: "sine.inOut", onUpdate: () => {
+      const [x, z] = bez(walk.u), [x2, z2] = bez(Math.min(1, walk.u + 0.03));
+      me.root.position.x = x; me.root.position.z = z;
+      if (walk.u < 0.96) {
+        let d = Math.atan2(x2 - x, z2 - z) - me.root.rotation.y;
+        while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2;
+        me.root.rotation.y += d * 0.3;
+      }
+    } }, 0.15);
+    tl.to(me.root.rotation, { y: 0, duration: 0.55, ease: "power2.inOut" }, 2.05);     // turn to you: feet shuffle, no turntable
+    // shot 2: cut on the stop to a side-on two-shot, drifting in
+    tl.call(() => { rig.pos.set(p.x - 3.5, 1.72, mz + 0.95); rig.look.set(p.x + 0.12, 1.2, mz); }, null, 2.25);
+    tl.to(rig.pos, { x: p.x - 3.0, y: 1.64, z: mz + 0.6, duration: 7.6, ease: "sine.inOut" }, 2.25);
+    tl.call(() => { me.play("emote-yes", 0.2, true); line("Hey! I'm Sparsh — welcome to my HQ.", 2.6); }, null, 2.6);
+    tl.call(() => p.play("emote-yes", 0.25, true), null, 4.1);                              // you nod back
+    tl.call(() => { me.lookTarget = { x: sx - 1.5, y: 3.8, z: sz - 7 }; line("Everything I've built is somewhere in this building.", 2.6); }, null, 5.3);
+    tl.call(() => { me.lookTarget = { x: p.x, y: 1.45, z: p.z }; }, null, 7.0);
+    tl.call(() => { me.play("interact-right", 0.2, true); line("I'll show you around — in a slightly more portable form.", 2.4); }, null, 7.9);
+    const T0 = 10.3;
     tl.call(() => {
       me.model.traverse((m) => {
         if (!m.isMesh) return;
@@ -181,34 +222,44 @@ const Guide = {
       });
       nameTag.visible = false;
       AudioSys.sfx("whoosh");
-    }, null, 8.2);
-    tl.to(glow, { k: 1, duration: 1.0, ease: "power2.in", onUpdate: () => { for (const m of mats) m.emissiveIntensity = glow.k * 3.2; } }, 8.2);
-    tl.to(me.root.rotation, { y: Math.PI * 6, duration: 1.5, ease: "power2.in" }, 8.3);
-    tl.to(me.root.scale, { x: 0.03, y: 0.03, z: 0.03, duration: 1.35, ease: "power3.in" }, 8.45);
-    tl.to(me.root.position, { y: 1.55, duration: 1.35, ease: "power2.in" }, 8.45);
+    }, null, T0);
+    // anticipation (a crouch), stretch up into light, then collapse to a point — squash & stretch, not a spin
+    tl.to(me.root.scale, { x: 1.1, y: 0.86, z: 1.1, duration: 0.22, ease: "power2.out" }, T0);
+    tl.to(me.root.scale, { x: 0.78, y: 1.26, z: 0.78, duration: 0.24, ease: "power2.in" }, T0 + 0.22);
+    tl.to(glow, { k: 1, duration: 0.7, ease: "power2.in", onUpdate: () => { for (const m of mats) m.emissiveIntensity = glow.k * 3.4; } }, T0 + 0.05);
+    tl.to(me.pivot.rotation, { y: Math.PI * 2, duration: 0.62, ease: "power3.in" }, T0 + 0.38);
+    tl.to(me.root.position, { y: 1.55, duration: 0.6, ease: "power2.in" }, T0 + 0.4);
+    tl.to(me.root.scale, { x: 0.03, y: 0.03, z: 0.03, duration: 0.42, ease: "power3.in" }, T0 + 0.58);
+    // the lens leans in with it, then springs back on the pop
+    const cam = Game.camera, proj = () => cam.updateProjectionMatrix();
+    tl.to(cam, { fov: Game.fovFor(48), duration: 0.55, ease: "power2.in", onUpdate: proj }, T0 + 0.45);
+    tl.to(cam, { fov: Game.fovFor(54), duration: 1.0, ease: "elastic.out(1, 0.45)", onUpdate: proj }, T0 + 1.0);
     tl.call(() => {
       F.group.remove(me.root);
-      const i = F.dynamic.indexOf(animate); if (i >= 0) F.dynamic.splice(i, 1);
       g.cine = true; g.root.visible = true;
       g.root.position.set(sx, 1.6, sz); g.vel.set(0, 0, 0); g.hist.length = 0; g.pulse = 1;
       Game.sparkle(sx, 1.6, sz, 0x9fe6ff, 26);
       AudioSys.sfx("secret");
-    }, null, 9.8);
-    tl.fromTo(g.root.scale, { x: 0.01, y: 0.01, z: 0.01 }, { x: 1, y: 1, z: 1, duration: 0.45, ease: "back.out(3)" }, 9.8);
+      watch = g.root;
+    }, null, T0 + 1.0);
+    tl.fromTo(g.root.scale, { x: 0.01, y: 0.01, z: 0.01 }, { x: 1, y: 1, z: 1, duration: 0.45, ease: "back.out(3)" }, T0 + 1.0);
     // a little arc over to your shoulder
     const arc = { u: 0 };
     tl.to(arc, { u: 1, duration: 1.1, ease: "sine.inOut", onUpdate: () => {
       const u = arc.u, ex = p.x + 0.75, ez = p.z + 0.1, mx = (sx + ex) / 2 + 1.2, mz = (sz + ez) / 2;
       const q = 1 - u;
       g.root.position.set(q * q * sx + 2 * q * u * mx + u * u * ex, q * q * 1.6 + 2 * q * u * 2.9 + u * u * 2.0, q * q * sz + 2 * q * u * mz + u * u * ez);
-    } }, 10.3);
-    tl.call(() => Guide.say("Start with my experience on Floor 1, or my education on Floor 2 — the two signposts take you there."), null, 11.2);
+    } }, T0 + 1.5);
+    tl.call(() => Guide.say("Start with my experience on Floor 1, or my education on Floor 2 — the two signposts take you there."), null, T0 + 2.4);
     const finish = () => {
       if (Guide._met) return;
       Guide._met = true;
       document.removeEventListener("pointerdown", skip, true); window.removeEventListener("keydown", skipKey, true);
-      if (F.group.children.includes(me.root)) { F.group.remove(me.root); const i = F.dynamic.indexOf(animate); if (i >= 0) F.dynamic.splice(i, 1); }
+      if (F.group.children.includes(me.root)) F.group.remove(me.root);
+      { const i = F.dynamic.indexOf(animate); if (i >= 0) F.dynamic.splice(i, 1); }
       g.cine = false; g.met = true; g.root.scale.setScalar(1); g.root.visible = true;
+      p.lookOverride = null;
+      Game.camera.fov = Game.fovFor(54); Game.camera.updateProjectionMatrix();
       for (const n of hidden) n.root.visible = true;
       if (p.tag) p.tag.visible = true;
       const end = Game.followPose();
@@ -219,7 +270,7 @@ const Guide = {
         if (done) done();
       } });
     };
-    tl.call(finish, null, 12.4);
+    tl.call(finish, null, T0 + 3.5);
     // impatient visitors can skip (click / Esc / Space / Enter)
     const skip = () => {
       if (Guide._met || Guide.noSkip || tl.time() < 1.2) return;

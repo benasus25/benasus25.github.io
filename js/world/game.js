@@ -147,12 +147,20 @@ const Game = {
 
   onResize() {
     const w = window.innerWidth, h = window.innerHeight;
-    Game.camera.aspect = w / h; Game.camera.updateProjectionMatrix();
+    Game.camera.aspect = w / h;
+    if (Game.cam.mode !== "cine") Game.camera.fov = Game.fovFor(Game.floorIndex === "P" ? 48 : 54);
+    Game.camera.updateProjectionMatrix();
     const pr = Game.retro ? 0.2 : Game.pixelRatio();
     Game.renderer.setPixelRatio(pr);
     Game.renderer.setSize(w, h);
     Game.composer.setPixelRatio(pr);
     Game.composer.setSize(w, h);
+  },
+
+  /* a phone held upright sees far less across: open the lens up so the room still reads */
+  fovFor(base) {
+    const a = Game.camera.aspect || 1;
+    return a < 1 ? Math.min(78, base / Math.pow(a, 0.45)) : base;
   },
 
   /* how many pixels we can afford: a budget per quality level, never above 1.25x DPR,
@@ -392,6 +400,8 @@ const Game = {
     const sp = opts.spawn || F.spawn;
     const p = Game.player;
     p.x = sp.x; p.z = sp.z; p.ry = sp.ry; p.vx = p.vz = 0; p.path = null; p.sitting = null; p.pending = null;
+    gsap.killTweensOf(p); p.rise = 0;
+    p._lx = p.x; p._lz = p.z; p._lry = p.ry; p.mspeed = 0;
     p.root.position.set(p.x, 0, p.z); p.root.rotation.y = p.ry;
     p.play("idle", 0);
     F.group.add(p.root);
@@ -402,7 +412,7 @@ const Game = {
     // frame arrivals from a diagonal (over the shoulder), not dead-behind
     Game.cam.tYaw = sp.ry + (opts.yawOffset !== undefined ? opts.yawOffset : F.yawOffset !== undefined ? F.yawOffset : -0.6);
     Game.cam.tDist = idx === "P" ? 9.5 : 8.6; Game.cam.tPitch = idx === "P" ? 0.36 : 0.6;
-    Game.camera.fov = idx === "P" ? 48 : 54; Game.camera.updateProjectionMatrix();
+    Game.camera.fov = Game.fovFor(idx === "P" ? 48 : 54); Game.camera.updateProjectionMatrix();
     if (idx !== "P") Game.cam.tYaw = Game.bestYaw(Game.pivotFor(p), Game.cam.tYaw, Game.cam.tPitch, Game.cam.tDist);
     Game.snapCamera();
     for (const c of F.cut) { c.k = 1; c.g.scale.y = 1; }
@@ -466,15 +476,32 @@ const Game = {
   },
 
   arrivalShot(F) {
-    const e = F.elevator;
-    const p = Game.player;
-    Game.cam.mode = "cine";
-    const start = new THREE.Vector3(e.x + Math.sin(e.ry) * 0.2, 1.7, e.z + Math.cos(e.ry) * 0.2);
-    Game.rig.pos.copy(start);
-    Game.rig.look.set(p.x + Math.sin(e.ry) * 3, 1.2, p.z + Math.cos(e.ry) * 3);
+    const e = F.elevator, p = Game.player, sp = e.spawn;
+    // where the follow camera will sit once you're on your mark
     const end = Game.followPose();
-    gsap.to(Game.rig.pos, { x: end.pos.x, y: end.pos.y, z: end.pos.z, duration: 2.2, ease: "power2.inOut" });
-    gsap.to(Game.rig.look, { x: end.look.x, y: end.look.y, z: end.look.z, duration: 2.2, ease: "power2.inOut", onComplete: () => { Game.snapCamera(); Game.cam.mode = "follow"; } });
+    // step out of the car: the doors are already open and you walk to your mark (no teleport, no pop)
+    const tx = e.x + Math.sin(e.ry) * 1.25, tz = e.z + Math.cos(e.ry) * 1.25;
+    const path = Game.findPath(F, tx, tz, sp.x, sp.z);
+    if (path && path.length) {
+      p.x = tx; p.z = tz; p.ry = Math.atan2(path[0].x - tx, path[0].z - tz);
+      p.root.position.set(tx, 0, tz); p.root.rotation.set(0, p.ry, 0); p._lx = tx; p._lz = tz; p._lry = p.ry;
+      p.path = path; p.pending = null; p.stuckT = 0; p.stuckX = tx; p.stuckZ = tz;
+      p.pathLen = path.reduce((acc, w, i) => acc + Math.hypot(w.x - (i ? path[i - 1].x : tx), w.z - (i ? path[i - 1].z : tz)), 0);
+    }
+    e.st.open = 1; e.st.hold = true;
+    gsap.delayedCall(1.4, () => { e.st.hold = false; });
+    // the lens starts inside the car, over your shoulder, and eases back to the follow pose as you walk out
+    const walkT = path && path.length ? Math.max(2.2, Math.min(3.4, (p.pathLen || 0) / 2.4 + 0.4)) : 2.2;
+    Game.cam.mode = "cine";
+    if (p.tag) p.tag.visible = false;
+    Game.rig.pos.set(e.x - Math.sin(e.ry) * 0.1, 2.3, e.z - Math.cos(e.ry) * 0.1);
+    Game.rig.look.set(sp.x + Math.sin(e.ry) * 3, 1.0, sp.z + Math.cos(e.ry) * 3);
+    gsap.to(Game.rig.pos, { x: end.pos.x, y: end.pos.y, z: end.pos.z, duration: walkT, ease: "power2.inOut" });
+    gsap.to(Game.rig.look, { x: end.look.x, y: end.look.y, z: end.look.z, duration: walkT, ease: "power2.inOut", onComplete: () => {
+      if (p.tag) p.tag.visible = true;
+      if (Game.cam.mode !== "cine") return;
+      Game.snapCamera(); Game.cam.mode = "follow";
+    } });
   },
 
   /* ================= baked contact shadows ================= */
@@ -562,6 +589,8 @@ const Game = {
       const vis = d < 13 && Game.state === "play";
       m.visible = vis;
       if (!vis) continue;
+      const cp = Game.camera.position;
+      gem.visible = Math.hypot(cp.x - it.x, cp.y - m.position.y, cp.z - it.z) > 3.4;
       const hot = it === Game.nearInteract || it === Game.hover;
       const s = U.damp(gem.scale.x, hot ? 1.8 : 1, 10, dt);
       gem.scale.set(s, s * 1.5, s);
@@ -579,6 +608,7 @@ const Game = {
     for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
       const x = b.x1 + (i + 0.5) * res, z = b.z1 + (j + 0.5) * res;
       if (x < b.x1 + R || x > b.x2 - R || z < b.z1 + R || z > b.z2 - R) { grid[j * cols + i] = 1; continue; }
+      if (F.ring && Math.hypot(x - F.ring.x, z - F.ring.z) > F.ring.r - R) { grid[j * cols + i] = 1; continue; }
       for (const c of F.colliders) if (x > c.x1 - R && x < c.x2 + R && z > c.z1 - R && z < c.z2 + R) { grid[j * cols + i] = 1; break; }
     }
     F.nav = { grid, cols, rows, res, x1: b.x1, z1: b.z1 };
@@ -668,7 +698,20 @@ const Game = {
 
   updatePlayer(dt) {
     const p = Game.player;
-    p.mixer.update(dt);
+    // where the eyes go: the exhibit you're at, else whoever is talking nearby
+    const cur = typeof Guide !== "undefined" ? Guide.cur : null;
+    if (p.lookOverride) p.lookTarget = p.lookOverride;
+    else if (cur) { const f = cur.focus || cur; p.lookTarget = { x: f.x, y: f.y === undefined ? 1.4 : f.y, z: f.z }; }
+    else {
+      let tgt = null, bd = 3.4;
+      for (const n of (Game.F ? Game.F.npcs : [])) {
+        if (n.bubbleT <= 0) continue;
+        const d = Math.hypot(n.root.position.x - p.x, n.root.position.z - p.z);
+        if (d < bd) { bd = d; tgt = { x: n.root.position.x, y: 1.5, z: n.root.position.z }; }
+      }
+      p.lookTarget = tgt;
+    }
+    p.animate(dt);
     p.tickBubble(dt);
     if (Game.state !== "play") return;
     let ix = 0, iz = 0, turn = 0;
@@ -686,8 +729,18 @@ const Game = {
       if (typeof Tutorial !== "undefined" && Tutorial.active) { Tutorial.lookAcc += dt * 2; if (Tutorial.lookAcc > 0.8) Tutorial.notify("look"); }
     }
     if (p.sitting) {
-      if (ix || iz || p.path) { p.sitting = null; p.x = p.standX; p.z = p.standZ; p.root.position.y = 0; }
-      else { p.play("sit"); p.root.position.set(p.x, p.seatY || 0, p.z); p.root.rotation.y = p.ry; return; }
+      if (ix || iz || p.path) {
+        // get up: a short rise back to where you stood, then you're free to move
+        gsap.killTweensOf(p);
+        p.sitting = null; p.rise = 0.3; p.riseFrom = { x: p.x, z: p.z, y: p.root.position.y }; p.play("idle", 0.3);
+      } else { p.play("sit"); p.root.position.set(p.x, p.sitY !== undefined ? p.sitY : (p.seatY || 0), p.z); p.root.rotation.y = p.ry; return; }
+    }
+    if (p.rise > 0) {
+      p.rise -= dt;
+      const k = 1 - Math.max(0, p.rise) / 0.3, e = k * k * (3 - 2 * k), f = p.riseFrom;
+      p.x = f.x + (p.standX - f.x) * e; p.z = f.z + (p.standZ - f.z) * e;
+      p.root.position.set(p.x, f.y * (1 - e), p.z);
+      if (p.rise > 0) return;
     }
     let dx = 0, dz = 0, ease = 1;
     const manual = Math.hypot(ix, iz) > 0.05;
@@ -733,21 +786,26 @@ const Game = {
       }
     }
     x = U.clamp(x, F.bounds.x1 + R, F.bounds.x2 - R); z = U.clamp(z, F.bounds.z1 + R, F.bounds.z2 - R);
+    if (F.ring) {   // round rooms keep you inside the circle
+      const rx = x - F.ring.x, rz = z - F.ring.z, rd = Math.hypot(rx, rz), rm = F.ring.r - R;
+      if (rd > rm) { x = F.ring.x + rx / rd * rm; z = F.ring.z + rz / rd * rm; }
+    }
     p.x = x; p.z = z;
     // what actually happened becomes the velocity (no pushing into walls at full speed)
     if (dt > 0) { p.vx = U.lerp(p.vx, (x - ox) / dt, 0.6); p.vz = U.lerp(p.vz, (z - oz) / dt, 0.6); }
     const speed = Math.hypot(p.vx, p.vz);
-    let lean = 0;
     if (speed > 0.25) {
       const face = Math.atan2(p.vx, p.vz);
       let turnD = face - p.ry; while (turnD > Math.PI) turnD -= Math.PI * 2; while (turnD < -Math.PI) turnD += Math.PI * 2;
       p.ry = U.angLerp(p.ry, face, Math.min(1, dt * (Math.abs(turnD) > 1.6 ? 20 : 14)));
-      lean = U.clamp(-turnD * speed * 0.03, -0.09, 0.09);
-      p.play(speed > 4.8 ? "sprint" : "walk", 0.15);
-      const walk = p.actions.walk; if (walk) walk.timeScale = U.clamp(speed / 2.9, 0.6, 1.45);
-      const spr = p.actions.sprint; if (spr) spr.timeScale = U.clamp(speed / 5.6, 0.8, 1.3);
-      p.stepAcc += speed * dt;
-      if (p.stepAcc > (speed > 4 ? 1.25 : 0.82)) { p.stepAcc = 0; AudioSys.sfx("step"); }
+      if (p.layer && !p.layerOnce && p.layerName !== "sit") p.play("walk");
+      // footsteps land when the feet do: both clips touch down at half-cycle marks
+      const A = p.cur && (p.cur === p.actions.walk || p.cur === p.actions.sprint) ? p.cur : null;
+      if (A) {
+        const half = ((A.time / A.getClip().duration) % 1) < 0.5 ? 0 : 1;
+        if (p._stepHalf !== undefined && half !== p._stepHalf) AudioSys.sfx("step");
+        p._stepHalf = half;
+      }
       // the camera drifts gently in behind you — only when you're heading away from it,
       // never while you steer it, never when strafing (that's what made walks spiral)
       if (!Game.cam.drag && Game.touch.lookId < 0 && Game.time - Game.cam.manualT > 1.6 && (!manual || iz > 0.3)) {
@@ -756,15 +814,15 @@ const Game = {
         if (Math.abs(d) < 1.15) Game.cam.tYaw += d * Math.min(1, dt * (manual ? 0.7 : 0.5) * Math.min(1, speed / 3));
       }
       if (Game.cam.mode === "focus") Game.release();
-    } else if (p.cur !== p.actions["interact-right"] && p.cur !== p.actions["emote-yes"]) p.play("idle", 0.3);
-    p.lean = U.damp(p.lean || 0, lean, 6, dt);
+    }
     p.root.position.set(p.x, 0, p.z);
-    p.root.rotation.set(0, p.ry, p.lean);
+    p.root.rotation.set(0, p.ry, 0);
     if (Game.cam.mode === "follow" || Game.cam.mode === "focus") p.tag.material.opacity = U.clamp((Game.cam.dist - 4) / 3, 0, 0.85);
   },
 
   walkTo(x, z, pending) {
     const F = Game.F, p = Game.player;
+    gsap.killTweensOf(p, "ry");
     const path = Game.findPath(F, p.x, p.z, x, z);
     if (!path) { p.pending = pending && Math.hypot(p.x - pending.x, p.z - pending.z) < pending.r ? pending : null; if (p.pending) Game.arrive(); return; }
     p.path = path; p.pending = pending || null; p.stuckT = 0; p.stuckX = p.x; p.stuckZ = p.z;
@@ -781,9 +839,12 @@ const Game = {
 
   useInteract(it) {
     const p = Game.player;
-    p.ry = Math.atan2(it.x - p.x, it.z - p.z);
-    p.play("interact-right", 0.15, true);
-    setTimeout(() => { if (p.cur === p.actions["interact-right"]) p.play("idle"); }, 900);
+    // turn to face it (a quick ease, not a snap), then reach for it
+    let face = Math.atan2(it.x - p.x, it.z - p.z), d0 = face - p.ry;
+    while (d0 > Math.PI) d0 -= Math.PI * 2; while (d0 < -Math.PI) d0 += Math.PI * 2;
+    gsap.killTweensOf(p, "ry");
+    gsap.to(p, { ry: p.ry + d0, duration: 0.28, ease: "power2.out", onUpdate: () => p.root.rotation.set(0, p.ry, 0) });
+    p.play("interact-right", 0.18, true);
     AudioSys.sfx("blip");
     if (it.focus) Game.focusOn(it.focus);
     it.fn();
@@ -792,10 +853,15 @@ const Game = {
 
   sit(seat) {
     const p = Game.player;
+    if (p.sitting) return;
     p.standX = p.x; p.standZ = p.z;
-    p.sitting = true; p.path = null;
-    p.x = seat.x; p.z = seat.z; p.ry = seat.ry; p.seatY = seat.y || 0;
+    p.sitting = true; p.path = null; p.rise = 0;
+    p.seatY = seat.y || 0; p.sitY = 0;
     p.vx = p.vz = 0;
+    // turn and lower onto the seat over a beat (not a teleport onto it)
+    let d = seat.ry - p.ry; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2;
+    gsap.killTweensOf(p);
+    gsap.to(p, { x: seat.x, z: seat.z, ry: p.ry + d, sitY: p.seatY, duration: 0.42, ease: "power2.inOut" });
     p.play("sit", 0.3);
     AudioSys.sfx("pop");
     UI.say(CONTENT.texts.sit);
@@ -824,10 +890,31 @@ const Game = {
     const F = Game.F, ceil = Game.camCeil(F);
     // zoom sets how far back we stand, pitch how high we'd like to be; the ceiling caps the height
     // (so indoors a steeper pitch walks the lens in closer instead of punching through the roof)
-    const y = Math.max(1.3, Math.min(ceil, pivot.y + Math.sin(pitch) * dist));
+    let y = Math.max(1.3, Math.min(ceil, pivot.y + Math.sin(pitch) * dist));
     const hd = Math.max(0.6, Math.cos(pitch) * dist);
     const dx = -Math.sin(yaw), dz = -Math.cos(yaw);
-    return { y, hd, dx, dz, free: Game.armFree(pivot, dx, dz, hd, y) };
+    const y0 = y;
+    if (F && !Game._strictDoors) y = Game.threadDoors(pivot, dx, dz, hd, y);
+    return { y, hd, dx, dz, free: Game.armFree(pivot, dx, dz, hd, y), threaded: y < y0 - 0.01 };
+  },
+  nearDoor(pv, w) {
+    const ex = w.x2 - w.x1, ez = w.z2 - w.z1, l2 = ex * ex + ez * ez || 1;
+    const u = U.clamp(((pv.x - w.x1) * ex + (pv.z - w.z1) * ez) / l2, 0, 1);
+    return Math.hypot(pv.x - (w.x1 + ex * u), pv.z - (w.z1 + ez * u)) < 2.4;
+  },
+  /* an arm that passes through a doorway dips to pass under the lintel (like a crew threading a door) */
+  threadDoors(pv, dx, dz, hd, cy) {
+    for (const w of Game.F.camWalls) {
+      if (!w.door || !Game.nearDoor(pv, w)) continue;
+      const ex = w.x2 - w.x1, ez = w.z2 - w.z1, len = Math.hypot(ex, ez); if (len < 1e-4) continue;
+      const den = dx * ez - dz * ex; if (Math.abs(den) < 1e-6) continue;
+      const ax = w.x1 - pv.x, az = w.z1 - pv.z;
+      const t = (ax * ez - az * ex) / den; if (t <= 0.05 || t >= hd) continue;
+      const u = (ax * dz - az * dx) / den; if (u < 0.25 || u > 0.75) continue;
+      const lim = w.lintel - 0.3, yy = pv.y + (cy - pv.y) * (t / hd);
+      if (yy > lim) cy = Math.max(pv.y + 0.15, pv.y + (lim - pv.y) * hd / t);
+    }
+    return cy;
   },
   /* how far (horizontally) the arm can reach from the pivot before something solid gets in the way */
   armFree(pv, dx, dz, hd, cy) {
@@ -853,11 +940,9 @@ const Game = {
       if (u < -pad || u > 1 + pad) continue;
       const yy = pv.y + (cy - pv.y) * (t / Math.max(0.01, hd));   // height where the arm crosses
       let y0 = w.y0;
-      if (w.door && !Game._strictDoors) {
-        // while you're in the doorway the lens may trail you through it (under the lintel)
-        const l2 = len * len, uu = U.clamp(((pv.x - w.x1) * ex + (pv.z - w.z1) * ez) / l2, 0, 1);
-        if (Math.hypot(pv.x - (w.x1 + ex * uu), pv.z - (w.z1 + ez * uu)) < 1.6) y0 = w.lintel - 0.1;
-      }
+      // a doorway is open air under its lintel: the lens trails you through it while you're
+      // passing (framing choices never aim through one); a few steps on, it re-frames in your room
+      if (w.door && !Game._strictDoors && Game.nearDoor(pv, w)) y0 = w.lintel - 0.1;
       if (yy < y0 - 0.15 || yy > w.y1 + 0.15) continue;
       const sin = Math.abs(den) / len;                     // grazing walls need more backing-off
       best = Math.min(best, t - M / Math.max(0.3, sin));
@@ -911,8 +996,10 @@ const Game = {
   snapCamera() {
     const c = Game.cam;
     c.yaw = c.tYaw; c.pitch = c.tPitch; c.dist = c.tDist;
+    c.sq = 0; c.still = 0;
     const f = Game.followPose();
     c.target.copy(f.look);
+    if (c.tv) c.tv.set(0, 0, 0);
     const a = Game.armSolve(f.look, c.yaw, c.pitch, c.dist);
     c.arm = a.free; c.armY = a.y;
     Game.camera.position.copy(f.pos);
@@ -941,9 +1028,12 @@ const Game = {
       c.pitch = U.damp(c.pitch, c.tPitch, 12, dt);
       c.dist = U.damp(c.dist, c.tDist, 9, dt);
       const piv = Game.pivotFor(Game.player);
-      c.target.x = U.damp(c.target.x, piv.x, 11, dt);
-      c.target.y = U.damp(c.target.y, piv.y, 11, dt);
-      c.target.z = U.damp(c.target.z, piv.z, 11, dt);
+      // a second-order spring: the lens eases into motion and out of it (no linear snap to speed)
+      const tv = c.tv || (c.tv = new THREE.Vector3());
+      const sk = 72, sc = 2 * Math.sqrt(sk) * 0.98;
+      tv.x += (sk * (piv.x - c.target.x) - sc * tv.x) * dt; c.target.x += tv.x * dt;
+      tv.y += (sk * (piv.y - c.target.y) - sc * tv.y) * dt; c.target.y += tv.y * dt;
+      tv.z += (sk * (piv.z - c.target.z) - sc * tv.z) * dt; c.target.z += tv.z * dt;
       // whiskers: when the arm is squeezed and you're not steering, swing toward open space
       if (!c.drag && Game.touch.lookId < 0 && Game.time - c.manualT > 1.2 && Game.time - (c.whiskT || 0) > 0.25) {
         c.whiskT = Game.time;
@@ -958,20 +1048,33 @@ const Game = {
         let d = c.whiskYaw - c.tYaw; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2;
         c.tYaw += d * Math.min(1, dt * 1.6);
       }
-      const a = Game.armSolve(c.target, c.yaw, c.pitch, c.dist);
+      // standing still for a moment? the camera breathes: a slow drift, never static
+      const still = Math.hypot(Game.player.vx || 0, Game.player.vz || 0) < 0.1 && !c.drag && Game.time - c.manualT > 3;
+      c.still = still ? Math.min(1, (c.still || 0) + dt * 0.25) : Math.max(0, (c.still || 0) - dt * 1.5);
+      const bt = Game.time, br = c.still * c.still * (3 - 2 * c.still);
+      const yawB = c.yaw + br * (Math.sin(bt * 0.13) * 0.07 + Math.sin(bt * 0.31) * 0.015);
+      const distB = c.dist * (1 - br * (0.06 + Math.sin(bt * 0.19) * 0.03));
+      const a = Game.armSolve(c.target, yawB, c.pitch, distB);
       // snap in fast when something gets between us, ease back out slowly
       if (c.arm === undefined) c.arm = a.free;
       // a big squeeze is a cut (like an edit), a small one a quick dolly; space opening up eases out
-      if (a.free < c.arm - 2.2) c.arm = a.free;
+      let cut = false;
+      if (a.free < c.arm - 2.2) { c.arm = a.free; cut = true; }
       else c.arm = a.free < c.arm ? U.damp(c.arm, a.free, 28, dt) : U.damp(c.arm, a.free, 3.2, dt);
-      // a squeezed arm drops toward shoulder height: over-the-shoulder, not a bird's-eye of your scalp
-      // the lens keeps its height when squeezed: in tall rooms that's a clean three-quarter view of
-      // the whole character, never a close-up of the back of their head
-      const wantY = c.arm < 1.6 ? Math.max(a.y, c.target.y + 2.6) : a.y;
-      c.armY = c.armY === undefined ? wantY : U.damp(c.armY, Math.min(Game.camCeil(Game.F), wantY), 8, dt);
-      cam.position.set(c.target.x + a.dx * c.arm, c.armY, c.target.z + a.dz * c.arm);
+      // squeezed (a wall close behind you): drop to over-the-shoulder — lens at shoulder height,
+      // nudged to the right, looking past you into the room. Never a bird's-eye of your scalp.
+      const sq = U.clamp((2.4 - c.arm) / 1.8, 0, 1);
+      const sqT = sq * sq * (3 - 2 * sq);
+      c.sq = cut ? sqT : U.damp(c.sq || 0, sqT, 5, dt);              // a cut lands composed, not mid-move
+      const wantY = U.lerp(a.y, Math.min(a.y, c.target.y + 0.55 + c.arm * 0.3), c.sq);
+      c.armY = c.armY === undefined || cut ? wantY : U.damp(c.armY, Math.min(Game.camCeil(Game.F), wantY), 8, dt);
+      if (a.threaded) c.armY = Math.min(c.armY, a.y);          // under a lintel there's no easing: the wall is right there
+      const sh = 0.5 * c.sq;
+      cam.position.set(c.target.x + a.dx * c.arm + a.dz * sh, c.armY, c.target.z + a.dz * c.arm - a.dx * sh);
       Game.armPush(cam.position);
-      cam.lookAt(c.target);
+      const ahead = 1.7 * c.sq;
+      Game._look = Game._look || new THREE.Vector3();
+      cam.lookAt(Game._look.set(c.target.x - a.dx * ahead, c.target.y - 0.12 * c.sq, c.target.z - a.dz * ahead));
     }
     Game.updateCutaway(dt);
     Game.updateOccluders(dt);
@@ -1352,14 +1455,15 @@ const Game = {
     Game.cam.mode = "cine";
     UI.letterbox(true);
     const rig = Game.rig;
-    rig.pos.set(38, 34, 46); rig.look.set(0, 16, -14);
-    const mid = { pos: new THREE.Vector3(-9, 7, 22), look: new THREE.Vector3(0, 7, -12) };
-    const tl = gsap.timeline({ onComplete: () => { Game.snapCamera(); Game.cam.mode = "follow"; Game.state = "play"; UI.letterbox(false); done && done(); } });
-    tl.to(rig.pos, { x: mid.pos.x, y: mid.pos.y, z: mid.pos.z, duration: 4.2, ease: "power2.inOut" }, 0);
-    tl.to(rig.look, { x: mid.look.x, y: mid.look.y, z: mid.look.z, duration: 4.2, ease: "power2.inOut" }, 0);
+    // one continuous crane move (sky → street → over your shoulder): a single eased curve, so the
+    // lens never stops dead halfway and starts again
     const end = Game.followPose();
-    tl.to(rig.pos, { x: end.pos.x, y: end.pos.y, z: end.pos.z, duration: 2.4, ease: "power2.inOut" });
-    tl.to(rig.look, { x: end.look.x, y: end.look.y, z: end.look.z, duration: 2.4, ease: "power2.inOut" }, "<");
+    const path = new THREE.CatmullRomCurve3([new THREE.Vector3(38, 34, 46), new THREE.Vector3(6, 13, 30), new THREE.Vector3(-9, 7, 22), end.pos.clone()], false, "centripetal");
+    const aim = new THREE.CatmullRomCurve3([new THREE.Vector3(0, 16, -14), new THREE.Vector3(0, 10, -13), new THREE.Vector3(0, 7, -12), end.look.clone()], false, "centripetal");
+    rig.pos.copy(path.getPoint(0)); rig.look.copy(aim.getPoint(0));
+    const k = { u: 0 };
+    const tl = gsap.timeline({ onComplete: () => { Game.snapCamera(); Game.cam.mode = "follow"; Game.state = "play"; UI.letterbox(false); done && done(); } });
+    tl.to(k, { u: 1, duration: 6.4, ease: "power2.inOut", onUpdate: () => { path.getPoint(k.u, rig.pos); aim.getPoint(k.u, rig.look); } }, 0);
     tl.call(() => UI.title("SPARSH HQ", "a building you can walk through"), null, 0.8);
   },
 
@@ -1370,10 +1474,12 @@ const Game = {
     UI.letterbox(true);
     gsap.killTweensOf(rig.pos); gsap.killTweensOf(rig.look);
     p.x = 0; p.z = 9.2; p.ry = 0; p.path = null;
+    p._lx = p.x; p._lz = p.z; p._lry = p.ry; p.mspeed = 0;
     p.root.position.set(p.x, 0, p.z); p.root.rotation.set(0, 0, 0);
     p.play("walk", 0.2);
     const walk = { z: 9.2 };
-    gsap.to(walk, { z: 15.5, duration: 5.5, ease: "none", onUpdate: () => { p.z = walk.z; p.root.position.z = walk.z; }, onComplete: () => p.play("idle", 0.4) });
+    // ease into the walk and out of it: the legs follow the measured speed, so the stride does too
+    gsap.to(walk, { z: 15.5, duration: 5.5, ease: "sine.inOut", onUpdate: () => { p.z = walk.z; p.root.position.z = walk.z; }, onComplete: () => p.play("idle", 0.4) });
     rig.pos.set(1.6, 1.9, 13.2); rig.look.set(0, 1.4, 9.4);
     const tl = gsap.timeline();
     tl.to(rig.look, { x: 0, y: 1.5, z: 15, duration: 4.5, ease: "sine.inOut" }, 0);

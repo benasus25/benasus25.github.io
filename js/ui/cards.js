@@ -356,6 +356,8 @@ const Cards = {
     else if (k === "core") { kick = o.code; title = o.name; line = o.tagline; ms = o.stats.slice(0, 4); }
     else if (k === "exec") { kick = "Executive suite"; title = "What's next"; line = o.now.map(([a, b]) => `${a}: ${b}`)[0]; }
     else if (k === "repoIndex") { kick = "The archive"; title = "Every repo, on one shelf"; line = `${C.repos.length} real repositories from github.com/benasus25`; }
+    else if (k === "matrix") { kick = "The stack"; title = "Everything I ship with, grouped"; line = C.skills.map((s) => s.name).join(" · "); }
+    else if (k === "reading") { kick = "The reading list"; title = `${C.books.length} books, one line each`; line = "What I read, and the one thing each one taught me."; }
     else { title = o.name || o.title || ""; line = (o.lines || [])[0] || ""; }
     return `<div class="cap-k">${E(kick)}</div><div class="cap-t">${E(title)}</div><div class="cap-l">${Cards.md(line || "")}</div>`
       + (ms.length ? `<div class="cap-m">${ms.map((m) => `<span><b>${E(m.v)}</b>${E(m.l)}</span>`).join("")}</div>` : "")

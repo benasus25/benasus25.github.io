@@ -62,84 +62,7 @@ const Chapter = {
     } });
     return g;
   },
-
-  /* one walk-through chapter: inlay, gateway, centrepiece, numbers, title */
-  build(F, n, cs, cx, hero) {
-    const col = Type.hex(cs.accent);
-    const z0 = -11.8, z1 = -4.9, w = 8.4, zc = (z0 + z1) / 2;
-    // the floor of the chapter
-    Kit.floorPlane(F, cx, zc, w, z1 - z0, Look.mat("fabric", 0x1b2230, { tile: 1.4 }), 0.009);
-    Kit.B(F.group, w, 0.012, 0.07, Kit.G(cs.accent, 2.2), cx, 0.014, z1, { r: 0.004, cast: false });
-    for (const s of [-1, 1]) Kit.B(F.group, 0.07, 0.012, z1 - z0, Kit.G(cs.accent, 1.4), cx + s * w / 2, 0.014, zc, { r: 0.004, cast: false });
-    // the gateway you walk through
-    const pm = Kit.M(0x11141a, { metal: 0.6, rough: 0.3 });
-    for (const s of [-1, 1]) {
-      Kit.B(F.group, 0.34, 4.1, 0.34, pm, cx + s * (w / 2 - 0.2), 2.05, z1 + 0.05, { r: 0.04 });
-      Kit.B(F.group, 0.05, 3.7, 0.06, Kit.G(cs.accent, 2.0), cx + s * (w / 2 - 0.2) - s * 0.18, 1.95, z1 + 0.2, { r: 0.01, cast: false });
-      Kit.collide(F, cx + s * (w / 2 - 0.2), z1 + 0.05, 0.5, 0.5);
-    }
-    lightbox(F, cx, 4.36, z1 + 0.05, 0, w - 0.1, 0.62, (c, cw, ch) => {
-      c.fillStyle = "#0a0d13"; c.fillRect(0, 0, cw, ch);
-      c.fillStyle = col; c.fillRect(0, ch - 5, cw, 5);
-      c.textBaseline = "middle"; c.textAlign = "left";
-      c.font = `800 ${ch * 0.36}px ${Kit.FONT}`; c.fillStyle = col; c.fillText(`CHAPTER ${n}`, ch * 0.4, ch * 0.52);
-      const kw = c.measureText(`CHAPTER ${n}`).width + ch * 0.8;
-      const company = cs.title.replace(/\b\w+/g, (s) => s[0] + s.slice(1).toLowerCase());
-      Type.fit(c, company, 800, ch * 0.5, cw * 0.45); c.fillStyle = "#fff"; c.fillText(company, kw, ch * 0.52);
-      c.textAlign = "right"; c.font = `600 ${ch * 0.3}px ${Kit.FONT}`; c.fillStyle = "rgba(232,236,244,0.85)";
-      c.fillText(`${cs.role}  ·  ${cs.dates}`, cw - ch * 0.4, ch * 0.52);
-    }, { px: 1500, accent: cs.accent, frame: false });
-    Kit.B(F.group, w + 0.3, 0.72, 0.18, pm, cx, 4.36, z1 - 0.12, { r: 0.03 });
-    // the centrepiece
-    hero(F, cx, -8.6);
-    // the numbers, on plinths you can walk between
-    const ms = (cs.metrics || []).slice(0, 4), span = Math.min(w - 1.6, ms.length * 1.9);
-    ms.forEach((m, i) => {
-      const px = cx - span / 2 + span * (ms.length > 1 ? i / (ms.length - 1) : 0.5), pz = -6.15;
-      Kit.B(F.group, 0.8, 0.95, 0.6, Kit.M(0x161a22, { rough: 0.4, metal: 0.4 }), px, 0.475, pz, { r: 0.04 });
-      Kit.B(F.group, 0.82, 0.03, 0.62, Kit.G(cs.accent, 1.8), px, 0.965, pz, { r: 0.01, cast: false });
-      Kit.collide(F, px, pz, 0.9, 0.7);
-      lightbox(F, px, 1.55, pz + 0.05, 0, 1.25, 0.95, (c, cw, ch) => {
-        c.fillStyle = "#0b0f16"; c.fillRect(0, 0, cw, ch);
-        c.textAlign = "center"; c.textBaseline = "alphabetic";
-        Type.fit(c, m.v, 800, ch * 0.42, cw * 0.9); c.fillStyle = col; c.fillText(m.v, cw / 2, ch * 0.55);
-        c.font = `600 ${ch * 0.12}px ${Kit.FONT}`; c.fillStyle = "rgba(232,236,244,0.8)";
-        const words = m.l.split(" "); let ln = "", row = 0;
-        for (const wd of words) { const tt = ln ? ln + " " + wd : wd; if (c.measureText(tt).width > cw * 0.88 && ln) { c.fillText(ln, cw / 2, ch * 0.74 + row * ch * 0.14); ln = wd; row++; } else ln = tt; }
-        if (ln) c.fillText(ln, cw / 2, ch * 0.74 + row * ch * 0.14);
-      }, { px: 300, accent: cs.accent });
-    });
-    // stepping through the gateway is a scene change
-    let shown = false;
-    F.dynamic.push({ update() {
-      const p = Game.player;
-      const inside = Math.abs(p.x - cx) < w / 2 && p.z > z0 && p.z < z1 - 0.2;
-      if (inside && !shown && Game.state === "play") {
-        shown = true;
-        UI.title(`Chapter ${n}`, `${cs.title.replace(/\b\w+/g, (s) => s[0] + s.slice(1).toLowerCase())} · ${cs.role} · ${cs.dates}`);
-        AudioSys.sfx("chime");
-        if (typeof Analytics !== "undefined") Analytics.event("chapter_enter", { chapter: cs.id });
-      }
-    } });
-  },
 };
-
-extend("fx", (F) => {
-  const C = CONTENT.cases, by = (id) => C.find((c) => c.id === id);
-  Chapter.build(F, 1, by("xtreme"), -11.3, (F2, x, z) => Props.globe(F2, x, z));
-  Chapter.build(F, 2, by("pocketpills"), 0, (F2, x, z) => Chapter.capsule(F2, x, z));
-  Chapter.build(F, 3, by("sprinklr"), 11.3, (F2, x, z) => Chapter.cxOrb(F2, x, z));
-  // the walkway that strings the chapters together, with the years on it
-  Kit.B(F.group, 31, 0.012, 0.08, Kit.G(0x57d8ff, 1.8), 0, 0.012, -3.9, { r: 0.004, cast: false });
-  [["2022", -11.3], ["2023 – 2025", 0], ["2025 → NOW", 11.3]].forEach(([yr, x]) => {
-    Kit.S(F.group, 0.1, Kit.G(0x57d8ff, 3), x, 0.05, -3.9, { cast: false });
-    const m = Kit.screen(F, 2.6, 0.5, (c, w, h) => {
-      c.clearRect(0, 0, w, h); c.fillStyle = "rgba(160,225,255,0.95)"; c.font = `800 ${h * 0.6}px ${Kit.FONT}`;
-      c.textAlign = "center"; c.textBaseline = "middle"; c.fillText(yr, w / 2, h / 2);
-    }, x, 0.016, -3.35, 0, { fps: 0, px: 300, transparent: true, glow: 1.4, decor: false });
-    m.rotation.x = -HP;
-  });
-});
 
 /* ============================================================
    F2 — EDUCATION · The Great Hall
@@ -222,7 +145,8 @@ Floors.fe = function (F) {
     Kit.C(F.group, 0.03, 0.03, 1.9, Kit.gold(), x, 3.3, z, { rx: HP, seg: 8, cast: false });
     // front faces the visitor walking toward the stage; the back faces the way back out
     lightbox(F, x - 0.02, 2.05, z, -HP, 1.6, 2.3, yearFace(yr, false), { px: 520, accent: yr.accent, frame: true, frameMat: Kit.M(0x2a1e14, { rough: 0.5 }) });
-    lightbox(F, x + 0.075, 2.05, z, HP, 1.6, 2.3, yearFace(yr, true), { px: 520, frame: false });
+    // (the front's frame runs to x + 0.09 — the reverse sits just proud of it, not buried inside)
+    lightbox(F, x + 0.105, 2.05, z, HP, 1.6, 2.3, yearFace(yr, true), { px: 520, frame: false });
     Kit.collide(F, x, z, 0.4, 1.9);
     Kit.hot(F, { x: x - 1.6, z: z * 0.55, y: 3.65, r: 2.2, label: `${yr.year} — ${yr.label}`, ref: yr, focus: { x, y: 2.1, z }, fn: () => { AudioSys.sfx("open"); UI.panel(yr); } });
   });
@@ -355,6 +279,8 @@ Floors.fe = function (F) {
   Kit.hot(F, { x: 8.8, z: 9.0, y: 2.0, r: 2.2, label: "Core coursework — DSA, OS, networks, DBMS, OOP", ref: dtu, focus: { x: 8.8, y: 1.1, z: 10.6 }, fn: () => { AudioSys.sfx("open"); UI.panel(dtu); } });
   // the reading list (south-west corner)
   Kit.neon(F, "THE READING LIST", 0xffd166, -11.6, 3.55, 11.84, Math.PI, { size: 0.24, glow: 1.6 });
+  Kit.hot(F, { x: -11.6, z: 9.9, y: 3.0, r: 2.4, label: "The reading list — every book, one line each", ref: { kind: "reading", id: "all" }, focus: { x: -11.6, y: 1.6, z: 11.5 },
+    fn: () => { AudioSys.sfx("open"); Cards.open("reading", { kind: "reading", id: "all" }, { source: "world" }); } });
   const cats = CONTENT.bookCats, cols = [0x57d8ff, 0x7ae582, 0xffd166, 0xff9e4d, 0xc084fc];
   const cases = [Kit.bookcase(F, -13.4, 11.55, Math.PI, { w: 3.2, h: 2.7, rows: 5, skipRows: [1, 3], noDecor: true, wood: Kit.M(0x3a2618, { rough: 0.6 }) }),
                  Kit.bookcase(F, -9.8, 11.55, Math.PI, { w: 3.2, h: 2.7, rows: 5, skipRows: [1, 3], noDecor: true, wood: Kit.M(0x3a2618, { rough: 0.6 }) })];
@@ -369,8 +295,8 @@ Floors.fe = function (F) {
 
   // ---- atmosphere ----
   for (const [x, z, ry] of [[-15.85, -8, HP], [-15.85, 8.5, HP], [-0.5, -11.85, 0], [6.5, 11.85, Math.PI], [-6.5, 11.85, Math.PI]]) Kit.torch(F, x, z, ry, { light: false });
-  F.npcSpecs.push({ model: "character-female-c", x: -6.0, z: -4.7, ry: Math.PI, behavior: "idle", hold: "files", quotes: "student" });
-  F.npcSpecs.push({ model: "character-male-e", x: -4.6, z: 4.7, ry: 0, behavior: "idle", hold: "files", quotes: "student" });
+  F.npcSpecs.push({ model: "character-female-c", x: -8.0, z: -4.95, ry: 0, behavior: "idle", hold: "files", quotes: "student" });
+  F.npcSpecs.push({ model: "character-male-e", x: -4.6, z: 4.95, ry: Math.PI, behavior: "idle", hold: "files", quotes: "student" });
   F.npcSpecs.push({ model: "character-female-a", x: 4, z: -6.5, behavior: "route", speed: 0.9, quotes: "student", waypoints: [[4, -6.5, 2], [10.5, -7.5, 3], [10.5, 6.5, 2], [2, 7, 2]] });
 };
 

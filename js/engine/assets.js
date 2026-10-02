@@ -154,9 +154,18 @@ const Assets = {
 
 /* ============================================================
    PEOPLE — Kenney Mini Characters with real skeletal animation
+   v7 animation layer:
+   · locomotion is a blend tree driven by MEASURED ground speed
+     (idle ↔ walk ↔ sprint weights + matched playback rate), so
+     feet never slide, whatever moves the character
+   · poses and gestures are layers that blend over locomotion
+   · heads (then torsos) turn to look at things procedurally
+   · bodies lean into acceleration and turns (weight)
    ============================================================ */
 const People = {
   H: 1.62,                // standing height in metres
+  WALK_NAT: 2.7,          // ground speed (m/s) at which the walk clip's feet plant cleanly (measured: foot sweep at the stance low point)
+  SPRINT_NAT: 5.0,
   _scale: {},
 
   scaleFor(name) {
@@ -173,7 +182,8 @@ const People = {
     const s = People.scaleFor(name) * (o.s || 1);
     model.scale.setScalar(s);
     const root = new THREE.Group();
-    root.add(model);
+    const pivot = new THREE.Group();          // lean / weight lives here, never on the model itself
+    root.add(pivot); pivot.add(model);
     root.position.set(o.x || 0, 0, o.z || 0);
     root.rotation.y = o.ry || 0;
     if (o.holo) {
@@ -191,6 +201,8 @@ const People = {
     for (const clip of g.animations) actions[clip.name] = mixer.clipAction(clip);
     const nodes = {};
     model.traverse((n) => { if (n.name) nodes[n.name] = n; });
+    const rest = {};
+    for (const b of ["head", "torso"]) if (nodes[b]) rest[b] = nodes[b].quaternion.clone();
 
     // speech bubble (small, above the head)
     const bubbleTex = Kit.canvasTex(256, 96, (c) => c.clearRect(0, 0, 256, 96));
@@ -200,20 +212,140 @@ const People = {
     bubble.renderOrder = 10;
     root.add(bubble);
 
+    // locomotion actions run all the time; their weights do the talking
+    const LOCO = ["idle", "walk", "sprint"];
+    const w = new Map();                       // action -> current weight
+    for (const n of LOCO) { const a = actions[n]; if (a) { a.enabled = true; a.setEffectiveWeight(n === "idle" ? 1 : 0); a.play(); w.set(a, n === "idle" ? 1 : 0); } }
+    const seed = Math.random() * 100;
+
     const P = {
-      name, root, model, mixer, actions, nodes, blob, bubble, bubbleTex, bubbleT: 0,
-      cur: null, speed: 0,
+      name, root, pivot, model, mixer, actions, nodes, blob, bubble, bubbleTex, bubbleT: 0,
+      cur: actions.idle || null, speed: 0, mspeed: 0,
+      layer: null, layerName: null, layerOnce: false, fadeRate: 7,
+      look: { yaw: 0, pitch: 0 }, lookTarget: null, turnStep: 0,
+      lean: { pitch: 0, roll: 0, vp: 0 }, _lx: root.position.x, _lz: root.position.z, _lry: root.rotation.y, _ls: 0,
+
+      /* legacy-compatible: locomotion names hand control back to the blend tree, anything else is a layer */
       play(anim, fade = 0.25, once = false) {
+        if (anim === "idle" || anim === "walk" || anim === "sprint") {
+          if (P.layer && !P.layerOnce) { P.layer = null; P.layerName = null; }   // gestures finish on their own
+          P.fadeRate = 1 / Math.max(0.08, fade);
+          return actions[anim];
+        }
         const a = actions[anim] || actions.idle;
-        if (!a || P.cur === a) return a;
+        if (!a) return a;
+        if (P.layerName === anim && !once) return a;
+        if (P.layer && P.layer !== a && !LOCO.includes(P.layerName)) { /* the old layer fades out on its own */ }
         a.reset();
         a.setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat);
         a.clampWhenFinished = once;
-        if (P.cur) a.crossFadeFrom(P.cur, fade, false);
+        a.enabled = true;
+        if (!w.has(a)) w.set(a, 0);
+        a.setEffectiveWeight(w.get(a));
         a.play();
+        P.layer = a; P.layerName = anim; P.layerOnce = once;
+        P.fadeRate = 1 / Math.max(0.08, fade);
         P.cur = a;
         return a;
       },
+
+      /* one frame of animation: measure speed → blend weights → pose → procedural look + lean */
+      animate(dt) {
+        if (dt <= 0) return;
+        // measured ground speed (whatever moved us — paths, routes, scripts, tweens)
+        const px = root.position.x, pz = root.position.z;
+        const inst = Math.hypot(px - P._lx, pz - P._lz) / dt;
+        P._lx = px; P._lz = pz;
+        P.mspeed = U.damp(P.mspeed, Math.min(inst, 9), 12, dt);
+        let sp = P.mspeed;
+        // turning on the spot moves the feet a little (no turntable spins)
+        let dry = root.rotation.y - P._lry; while (dry > Math.PI) dry -= Math.PI * 2; while (dry < -Math.PI) dry += Math.PI * 2;
+        P._lry = root.rotation.y;
+        const turnRate = Math.abs(dry) / dt;
+        if (sp < 0.4 && turnRate > 0.8) sp = Math.max(sp, Math.min(0.9, turnRate * 0.35));
+        if (P.turnStep > 0) sp = Math.max(sp, 0.55);
+
+        // a pose layer gives way to legs when we actually move (unless we're seated / mid-gesture)
+        const layerYields = P.layer && P.layerName !== "sit" && sp > (P.layerOnce ? 0.6 : 0.35);
+        if (layerYields && P.layerOnce) { P.layer = null; P.layerName = null; }
+        const layerTarget = P.layer && !layerYields ? 1 : 0;
+        const sm = (a, b, x) => { const t = U.clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+        const wsT = sm(4.0, 5.2, sp), wwT = sm(0.06, 0.75, sp) * (1 - wsT), wiT = Math.max(0, 1 - wwT - wsT);
+        const locoK = 1 - layerTarget;
+        const rate = P.fadeRate;
+        const targets = new Map();
+        if (actions.idle) targets.set(actions.idle, wiT * locoK);
+        if (actions.walk) targets.set(actions.walk, wwT * locoK);
+        if (actions.sprint) targets.set(actions.sprint, wsT * locoK);
+        if (P.layer) targets.set(P.layer, layerTarget);
+        for (const [a, cw] of w) {
+          const tw = targets.has(a) ? targets.get(a) : 0;
+          const nw = U.damp(cw, tw, rate, dt);
+          w.set(a, nw);
+          a.setEffectiveWeight(nw);
+          if (nw < 0.002 && tw === 0 && !LOCO.includes(a.getClip().name)) { a.stop(); w.delete(a); }
+        }
+        // playback rate follows ground speed → planted feet; walk and sprint share one phase
+        // (both clips put the left foot forward first) so a blend never scissors the legs
+        const aw = actions.walk, as = actions.sprint;
+        if (aw && as) {
+          const dW = aw.getClip().duration, dS = as.getClip().duration;
+          const ww = w.get(aw) || 0, ws = w.get(as) || 0, k = ws / Math.max(1e-3, ww + ws);
+          const fW = U.clamp(sp / People.WALK_NAT, 0.45, 1.6) / dW, fS = U.clamp(sp / People.SPRINT_NAT, 0.7, 1.4) / dS;
+          const f = fW + (fS - fW) * k;
+          aw.timeScale = f * dW; as.timeScale = f * dS;
+          if (ww > 0.01 && ws > 0.01) {
+            const lead = k < 0.5 ? aw : as, other = lead === aw ? as : aw;
+            other.time = ((lead.time / lead.getClip().duration) % 1) * other.getClip().duration;
+          }
+        } else if (aw) aw.timeScale = U.clamp(sp / People.WALK_NAT, 0.45, 1.6);
+        // the dominant action, for code that asks
+        let best = null, bw = -1; for (const [a, cw] of w) if (cw > bw) { bw = cw; best = a; }
+        P.cur = best;
+        // one-shot gestures hand back to locomotion when done
+        if (P.layer && P.layerOnce && P.layer.time >= P.layer.getClip().duration - 0.02) {
+          P.layer = null; P.layerName = null; P.fadeRate = 5;
+          if (P.restPose) P.play(P.restPose, 0.35);
+        }
+        P.fadeRate += (7 - P.fadeRate) * Math.min(1, dt * 1.5);      // a slow fade request relaxes back to the default
+
+        for (const b in rest) nodes[b].quaternion.copy(rest[b]);   // clips overwrite these; if one doesn't, no drift
+        mixer.update(dt);
+
+        // ---- procedural look-at (head first, torso follows a little) ----
+        const L = P.look;
+        let tYaw = 0, tPitch = 0;
+        const tgt = P.lookTarget;
+        if (tgt) {
+          const dx = tgt.x - px, dz = tgt.z - pz, hd = Math.hypot(dx, dz);
+          let a = Math.atan2(dx, dz) - root.rotation.y;
+          while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) a += Math.PI * 2;
+          if (Math.abs(a) < 1.9 && hd > 0.3) {
+            tYaw = U.clamp(a, -1.15, 1.15);
+            tPitch = U.clamp(Math.atan2((tgt.y === undefined ? 1.4 : tgt.y) - (root.position.y + 1.35), hd), -0.45, 0.4);
+          }
+        } else {
+          // idle eyes wander a little
+          tYaw = Math.sin(performance.now() * 0.00031 + seed) * 0.18;
+        }
+        L.yaw = U.damp(L.yaw, tYaw, 5.5, dt);
+        L.pitch = U.damp(L.pitch, tPitch, 5.5, dt);
+        if (nodes.head) { nodes.head.rotateY(L.yaw * 0.72); nodes.head.rotateX(-L.pitch * 0.7); }
+        if (nodes.torso) nodes.torso.rotateY(L.yaw * 0.25);
+
+        // ---- weight: lean into acceleration (pitch) and into turns (roll) ----
+        const acc = (P.mspeed - P._ls) / dt; P._ls = P.mspeed;
+        const tp = U.clamp(acc * 0.014, -0.09, 0.12) + U.clamp(P.mspeed * 0.012, 0, 0.05);
+        // a soft spring with a touch of overshoot: anticipation on the way in, settle on the way out
+        const k = 90, c = 2 * 0.62 * Math.sqrt(k);
+        P.lean.vp += (k * (tp - P.lean.pitch) - c * P.lean.vp) * dt;
+        P.lean.pitch += P.lean.vp * dt;
+        const troll = U.clamp(-dry / dt * P.mspeed * 0.012, -0.1, 0.1);
+        P.lean.roll = U.damp(P.lean.roll, troll, 6, dt);
+        pivot.rotation.x = P.lean.pitch;
+        pivot.rotation.z = P.lean.roll;
+      },
+
       attach(nodeName, obj) { const n = nodes[nodeName]; if (n) { n.add(obj); } return obj; },
       say(text, dur = 3.8) {
         const c = bubbleTex.image.getContext("2d");
@@ -231,6 +363,7 @@ const People = {
         lines.slice(0, 3).forEach((l, i) => c.fillText(l, 128, y0 + 10 + i * 22));
         bubbleTex.needsUpdate = true;
         P.bubbleT = dur;
+        P.bubblePop = 0;
       },
       tickBubble(dt) {
         if (P.bubbleT > 0) P.bubbleT -= dt;
@@ -239,11 +372,18 @@ const People = {
         const fade = U.clamp((d - 2.2) / 1.5, 0, 1);
         bubble.material.opacity += ((P.bubbleT > 0 ? fade : 0) - bubble.material.opacity) * Math.min(1, dt * 8);
         bubble.visible = bubble.material.opacity > 0.01;
+        // bubbles pop in with a little overshoot instead of fading on flat
+        if (P.bubblePop !== undefined && P.bubblePop < 1) {
+          P.bubblePop = Math.min(1, P.bubblePop + dt * 4);
+          const u = P.bubblePop, s2 = 1 + Math.sin(u * Math.PI) * 0.18 * (1 - u * 0.4);
+          bubble.scale.set(1.25 * s2 * (0.6 + 0.4 * u), 0.47 * s2 * (0.6 + 0.4 * u), 1);
+        }
       },
     };
-    P.play(o.anim || "idle", 0);
     // de-sync crowds
-    if (P.cur) P.cur.time = Math.random() * P.cur.getClip().duration;
+    if (actions.idle) actions.idle.time = Math.random() * actions.idle.getClip().duration;
+    if (actions.walk) actions.walk.time = Math.random() * actions.walk.getClip().duration;
+    if (o.anim && o.anim !== "idle") P.play(o.anim, 0);
     return P;
   },
 
@@ -269,27 +409,66 @@ const People = {
     return g;
   },
 
-  /* NPC: a person with a daily routine */
+  /* NPC: a person with a daily routine — steered, not slid */
   npc(F, spec) {
-    const P = People.make(spec.model && spec.model !== "character-male-c" ? spec.model : U.pick(Assets.manifest.people.filter((n) => n !== "character-male-c")), { x: spec.x, z: spec.z, ry: spec.ry || 0 });
+    // the visitor (male-c) and Sparsh himself (male-d) are never extras
+    const cast = (n) => n && n !== "character-male-c" && n !== "character-male-d";
+    const P = People.make(cast(spec.model) ? spec.model : U.pick(Assets.manifest.people.filter(cast)), { x: spec.x, z: spec.z, ry: spec.ry || 0 });
     F.group.add(P.root);
     P.spec = spec;
     P.behavior = spec.behavior || "idle";
     P.quoteT = 5 + Math.random() * 12;
-    P.wp = 0; P.pause = 0; P.waved = false; P.gestureT = Math.random() * 4;
-    if (spec.hold) {
-      const hand = spec.hold === "phone" ? "arm-left" : "arm-right";
-      const pr = People.prop(spec.hold);
-      pr.position.set(spec.hold === "phone" ? 0.05 : -0.05, -0.23, 0.08);
+    P.wp = 0; P.pause = 0; P.waved = false; P.gestureT = 1 + Math.random() * 4;
+    P.heading = P.root.rotation.y; P.v = 0; P.glanceT = Math.random() * 3; P.glance = null;
+    P.paceDir = 1; P.paceWait = Math.random() * 2;
+    const holdK = spec.hold || (P.behavior === "phone" ? "phone" : null);     // a phone call needs a phone
+    if (holdK) {
+      const hand = holdK === "phone" ? "arm-left" : "arm-right";
+      const pr = People.prop(holdK);
+      pr.position.set(holdK === "phone" ? 0.05 : -0.05, -0.23, 0.08);
       pr.scale.multiplyScalar(1 / P.model.scale.x);
       P.attach(hand, pr);
     }
-    const startAnim = { sit: "sit", type: "sit", coffee: "holding-right", phone: "holding-left", chat: "idle", idle: "idle", route: "walk", read: "sit" }[P.behavior] || "idle";
-    P.play(startAnim, 0);
+    const startPose = { sit: "sit", type: "sit", read: "sit", coffee: "holding-right", phone: "holding-left" }[P.behavior];
+    if (startPose) P.play(startPose, 0);
+    P.restPose = P.behavior === "coffee" ? startPose : null;     // a greeting nod hands this back when it's done
     if (P.behavior === "sit" || P.behavior === "type" || P.behavior === "read") P.root.position.y = spec.seatY !== undefined ? spec.seatY : 0.02;
 
+    /* steer toward a point: turn-rate limited, eases in and out, gives way to the visitor */
+    const steer = (tx, tz, maxSp, dt, arrive = true) => {
+      const r = P.root.position;
+      const mx = tx - r.x, mz = tz - r.z, d = Math.hypot(mx, mz);
+      if (d < 0.05) { P.v = U.damp(P.v, 0, 8, dt); return d; }
+      let want = Math.atan2(mx, mz);
+      // personal space: veer around the visitor instead of walking through them
+      const pl = Game.player, ax = pl.x - r.x, az = pl.z - r.z, ad = Math.hypot(ax, az);
+      // someone's standing on my mark: stop short of them and call it arrived
+      if (Math.hypot(tx - pl.x, tz - pl.z) < 0.9 && d < 1.4) { P.v = U.damp(P.v, 0, 8, dt); return 0; }
+      let slow = 1;
+      if (ad < 1.6) {
+        const fwd = Math.sin(P.heading) * ax + Math.cos(P.heading) * az;
+        if (fwd > 0) {
+          const side = Math.sin(P.heading) * az - Math.cos(P.heading) * ax;
+          want += (side > 0 ? -1 : 1) * (1.6 - ad) * 0.9;
+          slow = U.clamp(ad / 1.6, 0.35, 1);
+        }
+      }
+      let dh = want - P.heading; while (dh > Math.PI) dh -= Math.PI * 2; while (dh < -Math.PI) dh += Math.PI * 2;
+      P.heading += U.clamp(dh, -3.2 * dt, 3.2 * dt);
+      // slow for sharp turns and for the stop at the end
+      const turnSlow = U.clamp(1 - Math.abs(dh) / 2.2, 0.25, 1);
+      const arriveSlow = arrive ? U.clamp(d / 1.1, 0.15, 1) : 1;
+      const target = maxSp * Math.min(turnSlow, arriveSlow) * slow;
+      P.v += U.clamp(target - P.v, -2.4 * dt, 1.6 * dt);
+      r.x += Math.sin(P.heading) * P.v * dt;
+      r.z += Math.cos(P.heading) * P.v * dt;
+      { const sx = r.x - pl.x, sz = r.z - pl.z, sd = Math.hypot(sx, sz);    // never inside the visitor
+        if (sd < 0.72 && sd > 1e-4) { r.x = pl.x + sx / sd * 0.72; r.z = pl.z + sz / sd * 0.72; } }
+      P.root.rotation.y = P.heading;
+      return d;
+    };
+
     P.update = (dt, t) => {
-      P.mixer.update(dt);
       P.tickBubble(dt);
       const pl = Game.player;
       const dx = pl.x - P.root.position.x, dz = pl.z - P.root.position.z;
@@ -303,54 +482,81 @@ const People = {
       if (!P.waved && dist < 2.4 && P.behavior !== "route") {
         P.waved = true;
         if (spec.greeting) P.say(spec.greeting, 3.2);
-        if (P.behavior === "idle" || P.behavior === "chat") { P.play("emote-yes", 0.2, true); setTimeout(() => P.play(P.behavior === "chat" ? "idle" : "idle"), 1400); }
+        if (P.behavior === "idle" || P.behavior === "chat" || P.behavior === "coffee") P.play("emote-yes", 0.2, true);
       }
+      // where are my eyes?
+      P.glanceT -= dt;
+      if (P.glanceT <= 0) {
+        P.glanceT = 2.5 + Math.random() * 4;
+        const a = P.root.rotation.y + (Math.random() - 0.5) * 2.2;
+        P.glance = Math.random() < 0.35 ? null : { x: P.root.position.x + Math.sin(a) * 4, y: 1.0 + Math.random() * 1.2, z: P.root.position.z + Math.cos(a) * 4 };
+      }
+      const seated = P.behavior === "sit" || P.behavior === "type" || P.behavior === "read";
+      P.lookTarget = dist < 4.2 ? { x: pl.x, y: 1.45, z: pl.z } : (P.bubbleT > 0 || seated ? null : P.glance);
+      if (seated && dist >= 4.2) P.lookTarget = { x: P.root.position.x + Math.sin(P.root.rotation.y) * 0.8, y: 0.85, z: P.root.position.z + Math.cos(P.root.rotation.y) * 0.8 };
+
       switch (P.behavior) {
         case "route": {
           if (P.pause > 0) {
             P.pause -= dt;
-            if (P.pause <= 0) P.play(spec.hold === "phone" ? "holding-left" : "walk");
+            P.v = U.damp(P.v, 0, 8, dt);
+            if (P.pause <= 0 && P.layer && !P.layerOnce) P.play("walk");
             break;
           }
-          const w = spec.waypoints[P.wp];
-          const mx = w[0] - P.root.position.x, mz = w[1] - P.root.position.z;
-          const d = Math.hypot(mx, mz);
-          if (d < 0.2) {
+          const wpt = spec.waypoints[P.wp];
+          const willPause = !!wpt[2];
+          const d = steer(wpt[0], wpt[1], spec.speed || 1.1, dt, willPause);
+          if (d < (willPause ? 0.18 : 0.6)) {
             P.wp = (P.wp + 1) % spec.waypoints.length;
-            if (w[2]) { P.pause = w[2]; P.play(w[3] || (spec.hold === "cup" ? "holding-right" : "idle")); }
-          } else {
-            const sp = spec.speed || 1.1;
-            P.root.position.x += (mx / d) * sp * dt;
-            P.root.position.z += (mz / d) * sp * dt;
-            P.root.rotation.y = U.angLerp(P.root.rotation.y, Math.atan2(mx, mz), Math.min(1, dt * 8));
-            P.play("walk");
+            if (willPause) { P.pause = wpt[2]; if (wpt[3] || spec.hold === "cup") P.play(wpt[3] || "holding-right", 0.35); }
           }
           break;
         }
         case "chat": {
           P.gestureT -= dt;
           if (P.gestureT <= 0) {
-            P.gestureT = 2.5 + Math.random() * 4;
-            const g = U.pick(["emote-yes", "emote-no", "idle", "idle", "interact-right"]);
-            P.play(g, 0.25, g !== "idle");
-            if (g !== "idle") setTimeout(() => { if (P.behavior === "chat") P.play("idle"); }, 1500);
+            P.gestureT = 2.6 + Math.random() * 4.5;
+            const g = U.pick(["emote-yes", "emote-no", "interact-right", "interact-left", null, null]);
+            if (g) P.play(g, 0.3, true);
           }
+          // talk to the nearest neighbour when the visitor isn't close
+          if (dist >= 4.2 && !P.partner) {
+            let best = null, bd = 3.5;
+            for (const n of F.npcs) { if (n === P) continue; const d2 = Math.hypot(n.root.position.x - P.root.position.x, n.root.position.z - P.root.position.z); if (d2 < bd) { bd = d2; best = n; } }
+            P.partner = best || false;
+          }
+          if (dist >= 4.2 && P.partner) P.lookTarget = { x: P.partner.root.position.x, y: 1.5, z: P.partner.root.position.z };
           break;
         }
         case "phone": {
-          const px = spec.x + Math.sin(t * 0.35 + spec.x) * (spec.pace || 0.9);
-          const vx = (px - P.root.position.x);
-          P.root.position.x += vx * Math.min(1, dt * 2);
-          if (Math.abs(vx) > 0.02) P.root.rotation.y = U.angLerp(P.root.rotation.y, vx > 0 ? Math.PI / 2 : -Math.PI / 2, dt * 3);
+          // pace a short line while talking: walk, stop, turn, talk, walk back
+          const half = spec.pace || 0.9;
+          if (P.paceWait > 0) {
+            P.paceWait -= dt; P.v = U.damp(P.v, 0, 8, dt);
+            if (!P.layer) P.play("holding-left", 0.35);
+            if (dist >= 4.2) { const ry = P.root.rotation.y; P.lookTarget = { x: P.root.position.x + Math.sin(ry) * 0.45, y: 0.95, z: P.root.position.z + Math.cos(ry) * 0.45 }; }
+            if (P.paceWait <= 0) P.paceDir *= -1;
+            break;
+          }
+          const tx = spec.x + P.paceDir * half;
+          if (steer(tx, spec.z, 0.7, dt, true) < 0.12) P.paceWait = 1.6 + Math.random() * 2.4;
           break;
         }
         default: break;
       }
-      // turn to face the visitor when they come close (idle folk only)
+      // idle folk turn to face a visitor who lingers — head first, then a couple of steps round
       if ((P.behavior === "idle" || P.behavior === "coffee" || P.behavior === "chat") && dist < 3 && dist > 0.5) {
-        P.root.rotation.y = U.angLerp(P.root.rotation.y, Math.atan2(dx, dz), Math.min(1, dt * 2.5));
-      }
+        let a = Math.atan2(dx, dz) - P.root.rotation.y; while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) a += Math.PI * 2;
+        if (Math.abs(a) > 0.95 || P.turnStep > 0) {
+          P.turnStep = Math.abs(a) > 0.25 ? 1 : 0;
+          P.root.rotation.y += U.clamp(a, -2.4 * dt, 2.4 * dt);
+          P.heading = P.root.rotation.y;
+        }
+      } else P.turnStep = 0;
+
+      P.animate(dt);
     };
     return P;
   },
 };
+

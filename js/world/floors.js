@@ -256,7 +256,7 @@ const Floors = {
     /* ---- people ---- */
     F.npcSpecs.push({ model: "character-male-f", x: 2.7, z: -8.6, ry: Math.PI * 0.85, behavior: "idle", quotes: "concierge", greeting: "Good evening. They're expecting you." });
     F.npcSpecs.push({ model: "character-female-c", x: -8, z: 8, behavior: "route", hold: "phone", speed: 1.0, waypoints: [[-8, 8, 2], [-12, 1, 1], [-6, -4, 3], [-11, 4, 1]] });
-    F.npcSpecs.push({ model: "character-male-d", x: 7.5, z: 9.8, ry: -1.2, behavior: "chat" });
+    F.npcSpecs.push({ model: "character-male-b", x: 7.5, z: 9.8, ry: -1.2, behavior: "chat" });
     F.npcSpecs.push({ model: "character-female-a", x: 6.6, z: 9.2, ry: 2.0, behavior: "chat", quotes: "dev" });
 
     // entering the building
@@ -266,7 +266,7 @@ const Floors = {
       if (Game.state === "play" && p.z < -10.9 && Math.abs(p.x) < 1.8 && !entered) {
         entered = true;
         AudioSys.sfx("doors");
-        Game.loadFloor(0, { spawn: { x: 0, z: 6.9, ry: Math.PI }, yawOffset: 0 });
+        Game.loadFloor(0, { spawn: { x: 0, z: 5.6, ry: Math.PI }, yawOffset: 0 });
         setTimeout(() => { entered = false; }, 1500);
         if (!Game.guide.met) setTimeout(() => Guide.meet(), 350);
       }
@@ -299,7 +299,7 @@ const Floors = {
     const dg = Kit.cutGroup(F, -2.4, 10, 2.4, 10, 4.2);
     Kit.B(dg, 4.8, 1.3, 0.3, Kit.M(0x1a120c, { rough: 0.4 }), 0, 3.55, 10, { r: 0.03 });
     Kit.door(F, dg, 0, 10, 0, 4.4, 2.9, "slide");
-    F.spawn = { x: 0, z: 6.9, ry: Math.PI };
+    F.spawn = { x: 0, z: 5.6, ry: Math.PI };
 
     /* ---- grand axis: runner, ropes, desk, logo ---- */
     Kit.rug(F, 0, 3.4, 2.8, 11.5, 0, { kind: "border", colors: [0x4a0f1a, 0xd9a441, 0x2a070e] });

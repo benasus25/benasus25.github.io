@@ -47,9 +47,9 @@ const CONTENT = {
 
   floors: [
     { idx: 0, key: "f0", audio: 0, name: "Reception",        theme: "The Continental",   what: "Start here",                          track: "Marble & Gold — Continental House Trio", try: "meet me · the two signposts · the one-page résumé" },
-    { idx: 1, key: "fx", audio: 1, name: "Experience",       theme: "Avengers Tower",    what: "Three chapters · six systems · the stack", track: "Arc Reactor Hum in D minor",           try: "walk the three chapters · the systems I built (south) · the stack (east)" },
+    { idx: 1, key: "fx2", audio: 1, name: "Experience",      theme: "Avengers Tower",    what: "Three rooms · six systems · the stack", track: "Arc Reactor Hum in D minor",            try: "through the arches in order — or the gallery on the right, straight to any room" },
     { idx: 2, key: "fe", audio: 3, name: "Education",        theme: "The Great Hall",    what: "DTU · 8.83 · LeetCode · leadership",   track: "Candlelight for Compilers",              try: "walk the aisle year by year · the graduation stage · achievements (north)" },
-    { idx: 3, key: "fp", audio: 2, name: "Projects",         theme: "Stark Labs R&D",    what: "3 projects · the core · 12 repos",    track: "Blueprints at 2 AM",                     try: "three projects (north) · the core (centre) · the archive & the bench (south)" },
+    { idx: 3, key: "fp2", audio: 2, name: "Projects",         theme: "Stark Labs R&D",    what: "The rotunda · 3 projects · 12 repos", track: "Blueprints at 2 AM",                     try: "the core at the centre · three projects around it · the archive & the bench on the south arc" },
     { idx: 4, key: "f7", audio: 7, name: "The Penthouse",    theme: "Real Madrid Suite", what: "What's next · get in touch",          track: "Time (in spirit) — Not Hans Zimmer",     try: "the goals board · the desk · the balcony" },
   ],
   plazaTrack: "Petrichor",
@@ -588,9 +588,9 @@ const CONTENT = {
   guideLines: {
     plaza: "Go on in — the doors are automatic. I'm very proud of the doors.",
     f0: "Two signposts: Experience is Floor 1, Education is Floor 2. Start with either — I'll come along.",
-    f1: "My career in three chapters — walk through each one. The six systems I built are along the south wall.",
+    f1: "My career, one room per chapter. Walk the arches in order, or take the gallery on the right straight to Sprinklr — that's now.",
     f2: "The Great Hall. Walk the aisle year by year to the graduation stage. Achievements are on the north side.",
-    f3: "Side projects: an AI-agent harness, a LAN chat server, a ship router — and every repo I've shipped.",
+    f3: "The rotunda. The core in the middle runs on curiosity — the three projects stand around it.",
     f4: "Top floor. What I'm building next, and how to reach me.",
   },
 
