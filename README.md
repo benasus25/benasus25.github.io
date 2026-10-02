@@ -31,7 +31,7 @@ Live at **https://benasus25.github.io/** (GitHub Pages).
 | `R` | the one-page résumé |
 | `Tab` | show / hide the floor checklist (collapsed by default) |
 | `F` | elevator · `C` NOVA (lobby) · `M` sound |
-| touch | left side moves, right side looks, tap to walk |
+| touch (phones, tablets) | a thumbstick appears wherever your left thumb lands · drag the right half to look, pinch to zoom · tap anything to walk there or open it · the ◆ button (bottom-right) uses whatever's nearby · 💬 asks NOVA. Works upright or sideways; phones get a wider lens and lighter rendering. |
 
 ## The building
 

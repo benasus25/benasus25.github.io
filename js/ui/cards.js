@@ -361,7 +361,7 @@ const Cards = {
     else { title = o.name || o.title || ""; line = (o.lines || [])[0] || ""; }
     return `<div class="cap-k">${E(kick)}</div><div class="cap-t">${E(title)}</div><div class="cap-l">${Cards.md(line || "")}</div>`
       + (ms.length ? `<div class="cap-m">${ms.map((m) => `<span><b>${E(m.v)}</b>${E(m.l)}</span>`).join("")}</div>` : "")
-      + `<div class="cap-h"><kbd>E</kbd> or click it — the full story</div>`;
+      + `<div class="cap-h">${UI.touch ? "Tap it, or the ◆ button" : "<kbd>E</kbd> or click it"} — the full story</div>`;
   },
 
   /* ---------------- the one-page résumé ---------------- */

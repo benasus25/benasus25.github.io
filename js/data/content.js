@@ -56,10 +56,10 @@ const CONTENT = {
   plazaTry: "walk the red carpet — the doors know you're coming",
 
   tutorial: [
-    { id: "move", text: "Click the floor to walk there — or use W A S D" },
-    { id: "look", text: "Drag to look around · scroll to zoom" },
-    { id: "interact", text: "Gold ◆ = something to read. Click it, or the object itself" },
-    { id: "elevator", text: "Top-left lists everything on this floor. F (or 🛗) changes floors" },
+    { id: "move", text: "Click the floor to walk there — or use W A S D", touch: "Tap the floor to walk there — or drag on the left half of the screen" },
+    { id: "look", text: "Drag to look around · scroll to zoom", touch: "Drag on the right half to look around · pinch to zoom" },
+    { id: "interact", text: "Gold ◆ = something to read. Click it, or the object itself", touch: "Gold ◆ = something to read. Tap it — or the ◆ button bottom-right" },
+    { id: "elevator", text: "Top-left lists everything on this floor. F (or 🛗) changes floors", touch: "Tap the floor tag (top-left) for this floor's checklist. 🛗 changes floors" },
     { id: "free", text: "Walk up to anything glowing — I'll tell you about it. Short on time? “Résumé”, top-right." },
   ],
 

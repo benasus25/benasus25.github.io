@@ -1286,33 +1286,76 @@ const Game = {
       Game.cam.manualT = Game.time;
     }, { passive: true });
 
+    // touch: the left half is a thumbstick that appears where your thumb lands, the right half
+    // looks around, two fingers on the right pinch to zoom, and a quick tap anywhere is a click
+    const T = Game.touch, joy = document.getElementById("joy"), knob = joy && joy.querySelector("i");
+    T.pinchId = -1;
+    const showJoy = (x, y) => { if (!joy) return; joy.style.left = x + "px"; joy.style.top = y + "px"; knob.style.transform = "translate(-50%, -50%)"; joy.classList.remove("hidden"); };
+    const tap = (t, moved, t0) => { if (moved < 10 && performance.now() - t0 < 320 && Game.state === "play") Game.click(t.clientX, t.clientY); };
     cv.addEventListener("touchstart", (e) => {
       for (const t of e.changedTouches) {
-        if (t.clientX < window.innerWidth * 0.4 && Game.touch.moveId < 0) { Game.touch.moveId = t.identifier; Game.touch.ox = t.clientX; Game.touch.oy = t.clientY; }
-        else if (Game.touch.lookId < 0) { Game.touch.lookId = t.identifier; Game.touch.lx = t.clientX; Game.touch.ly = t.clientY; Game.touch.moved = 0; }
+        const nearLook = T.lookId >= 0 && T.pinchId < 0 && Math.hypot(t.clientX - T.lx, t.clientY - T.ly) < 220;
+        if (!nearLook && t.clientX < window.innerWidth * 0.5 && T.moveId < 0 && Game.state === "play") {
+          T.moveId = t.identifier; T.ox = t.clientX; T.oy = t.clientY; T.mmoved = 0; T.mt0 = performance.now(); T.dx = T.dy = 0;
+          showJoy(t.clientX, t.clientY);
+        } else if (T.lookId < 0) {
+          T.lookId = t.identifier; T.lx = t.clientX; T.ly = t.clientY; T.moved = 0; T.lt0 = performance.now();
+        } else if (T.pinchId < 0) {
+          T.pinchId = t.identifier; T.px = t.clientX; T.py = t.clientY; T.moved = 99;
+          T.pd = Math.hypot(T.px - T.lx, T.py - T.ly);
+          if (Game.cam.mode === "focus") Game.release();
+        }
       }
     }, { passive: true });
     cv.addEventListener("touchmove", (e) => {
       for (const t of e.changedTouches) {
-        if (t.identifier === Game.touch.moveId) {
-          Game.touch.dx = U.clamp((t.clientX - Game.touch.ox) / 50, -1, 1);
-          Game.touch.dy = U.clamp((t.clientY - Game.touch.oy) / 50, -1, 1);
-        } else if (t.identifier === Game.touch.lookId) {
-          const dx = t.clientX - Game.touch.lx, dy = t.clientY - Game.touch.ly;
-          Game.touch.moved += Math.abs(dx) + Math.abs(dy);
-          Game.cam.tYaw -= dx * 0.006;
-          Game.cam.tPitch = U.clamp(Game.cam.tPitch + dy * 0.004, 0.08, 1.2);
-          Game.cam.manualT = Game.time;
-          Game.touch.lx = t.clientX; Game.touch.ly = t.clientY;
+        if (t.identifier === T.moveId) {
+          const ddx = t.clientX - T.ox, ddy = t.clientY - T.oy, r = Math.hypot(ddx, ddy), R = 46;
+          T.mmoved = Math.max(T.mmoved, r);
+          // a small dead zone, then full speed at the ring's edge
+          const k = r < 6 ? 0 : Math.min(1, (r - 6) / (R - 6)) / Math.max(r, 1e-3);
+          T.dx = ddx * k; T.dy = ddy * k;
+          if (knob) { const c = Math.min(r, R) / Math.max(r, 1e-3); knob.style.transform = `translate(calc(-50% + ${ddx * c}px), calc(-50% + ${ddy * c}px))`; }
+        } else if (t.identifier === T.lookId || t.identifier === T.pinchId) {
+          let dx, dy;
+          if (t.identifier === T.lookId) { dx = t.clientX - T.lx; dy = t.clientY - T.ly; T.lx = t.clientX; T.ly = t.clientY; }
+          else { T.px = t.clientX; T.py = t.clientY; }
+          if (T.pinchId >= 0) {
+            const d = Math.hypot(T.px - T.lx, T.py - T.ly);
+            if (T.pd > 10 && d > 10) {
+              Game.cam.tDist = U.clamp(Game.cam.tDist * (T.pd / d), 3, Game.floorIndex === "P" ? 18 : 13);
+              Game.cam.manualT = Game.time;
+              if (typeof Tutorial !== "undefined" && Tutorial.active) { Tutorial.lookAcc += 0.05; if (Tutorial.lookAcc > 0.8) Tutorial.notify("look"); }
+            }
+            T.pd = d;
+          } else if (dx !== undefined) {
+            T.moved += Math.abs(dx) + Math.abs(dy);
+            if (T.moved > 10 && Game.cam.mode === "focus") Game.release();
+            Game.cam.tYaw -= dx * 0.006;
+            Game.cam.tPitch = U.clamp(Game.cam.tPitch + dy * 0.004, 0.08, 1.2);
+            Game.cam.manualT = Game.time;
+            if (typeof Tutorial !== "undefined" && Tutorial.active) { Tutorial.lookAcc += (Math.abs(dx) + Math.abs(dy)) * 0.004; if (Tutorial.lookAcc > 0.8) Tutorial.notify("look"); }
+          }
         }
       }
     }, { passive: true });
-    cv.addEventListener("touchend", (e) => {
+    const end = (e, cancelled) => {
       for (const t of e.changedTouches) {
-        if (t.identifier === Game.touch.moveId) { Game.touch.moveId = -1; Game.touch.dx = Game.touch.dy = 0; }
-        if (t.identifier === Game.touch.lookId) { Game.touch.lookId = -1; if (Game.touch.moved < 8 && Game.state === "play") Game.click(t.clientX, t.clientY); }
+        if (t.identifier === T.moveId) {
+          T.moveId = -1; T.dx = T.dy = 0; if (joy) joy.classList.add("hidden");
+          if (!cancelled) tap(t, T.mmoved, T.mt0);
+        }
+        if (t.identifier === T.pinchId) T.pinchId = -1;
+        if (t.identifier === T.lookId) {
+          T.lookId = -1;
+          if (T.pinchId >= 0) {          // the other finger carries on as the look finger
+            T.lookId = T.pinchId; T.lx = T.px; T.ly = T.py; T.pinchId = -1; T.moved = 99;
+          } else if (!cancelled) tap(t, T.moved, T.lt0);
+        }
       }
-    }, { passive: true });
+    };
+    cv.addEventListener("touchend", (e) => end(e, false), { passive: true });
+    cv.addEventListener("touchcancel", (e) => end(e, true), { passive: true });
   },
 
   pickAt(cx, cy) {

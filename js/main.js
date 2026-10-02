@@ -10,6 +10,7 @@
     try {
       if (/nowebgl/.test(location.hash)) throw new Error("forced fallback (#nowebgl)");
       Game.init(canvas);
+      if (UI.touch) Game.setQuality(0);          // phones and tablets: no AO, lighter shadows
     } catch (e) {
       // no WebGL (locked-down laptop, old browser): the building can't open, but the résumé can
       console.error(e);
@@ -35,8 +36,11 @@
         <div class="sp-load"><div class="sp-bar"><i id="sp-fill"></i></div><div id="sp-status">Furnishing the building…</div></div>
         <button id="enter-btn" class="btn primary big" disabled>◈ &nbsp;STEP INSIDE</button>
         <div class="sp-fast"><button id="fast-btn" class="btn ghost">In a hurry? Read the one-page résumé →</button></div>
-        <div class="sp-ctrl">
+        <div class="sp-ctrl k-desk">
           <span><b>click</b> walk &amp; open things</span><span><b>WASD</b> walk</span><span><b>drag</b> look</span><span><b>R</b> résumé</span>
+        </div>
+        <div class="sp-ctrl k-touch">
+          <span><b>tap</b> walk &amp; open things</span><span><b>left thumb</b> walk</span><span><b>right thumb</b> look</span><span><b>pinch</b> zoom</span>
         </div>
         <div style="margin-top:20px"><a class="btn ghost sm" href="v1/">prefer the classic isometric tour? → v1</a></div>
         <div class="sp-cred">${CONTENT.profile.name} · ${CONTENT.profile.role} @ ${CONTENT.profile.company} · headphones recommended 🎧${Analytics.on || Analytics.replay ? `<br><span class="sp-priv">Visits are counted anonymously (Google Analytics${Analytics.replay ? " · Microsoft Clarity" : ""}).</span>` : ""}</div>

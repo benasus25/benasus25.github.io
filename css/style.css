@@ -529,3 +529,83 @@ body.has-cap #prompt { display: none !important; }
 /* chapter / scene titles sit in the upper third, clear of the walk-up caption */
 #titlecard { bottom: auto; top: 15vh; }
 #tc-small { letter-spacing: 0.22em; }
+
+/* ---------- v8 · phones and tablets ---------- */
+#scene { touch-action: none; -webkit-user-select: none; user-select: none; }
+button, .btn { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+.k-touch { display: none !important; }
+body.touch .k-touch { display: flex !important; }
+body.touch .k-desk { display: none !important; }
+
+/* notches and home bars */
+#hud-btns { top: calc(12px + env(safe-area-inset-top)); right: calc(14px + env(safe-area-inset-right)); }
+#hud-floor { top: calc(16px + env(safe-area-inset-top)); left: calc(18px + env(safe-area-inset-left)); }
+#dir { margin-top: env(safe-area-inset-top); margin-left: env(safe-area-inset-left); }
+
+/* the thumbstick appears where the left thumb lands */
+#joy { position: absolute; width: 104px; height: 104px; margin: -52px 0 0 -52px; border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.28); background: radial-gradient(circle, rgba(8, 10, 16, 0.12), rgba(8, 10, 16, 0.38));
+  pointer-events: none !important; z-index: 5; }
+#joy i { position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; border-radius: 50%; transform: translate(-50%, -50%);
+  background: radial-gradient(circle at 40% 35%, #ffe2a0, #d8a54a); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45); }
+
+/* the action button: whatever's nearby, under the right thumb */
+#act { position: absolute; right: calc(14px + env(safe-area-inset-right)); bottom: calc(16px + env(safe-area-inset-bottom));
+  display: flex; align-items: center; gap: 8px; max-width: min(62vw, 340px); padding: 12px 18px 12px 14px; border-radius: 999px;
+  font: 700 14px var(--font); color: #1a1206; background: linear-gradient(135deg, #f3cf7c, #d39b3c); border: 0;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 0 4px rgba(216, 165, 74, 0.18); cursor: pointer; z-index: 7;
+  animation: actIn 0.25s ease both; transition: transform 0.08s ease; }
+@keyframes actIn { from { opacity: 0; } to { opacity: 1; } }
+#act b { font-size: 15px; }
+#act span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#act:active { transform: scale(0.96); }
+body:not(.touch) #act { display: none !important; }
+body.touch #prompt { display: none !important; }
+body.cinema #act { display: none !important; }
+
+/* a walk-up caption never sits on top of an open card, chat, modal or book */
+body:has(#panel:not(.hidden)) #caption, body:has(#chat:not(.hidden)) #caption,
+body:has(#modal-wrap:not(.hidden)) #caption, body:has(#bookview:not(.hidden)) #caption { opacity: 0 !important; }
+body:has(#panel:not(.hidden)) #act, body:has(#chat:not(.hidden)) #act,
+body:has(#modal-wrap:not(.hidden)) #act, body:has(#bookview:not(.hidden)) #act { display: none !important; }
+
+@media (max-width: 720px) {
+  /* bottom of the screen: caption above the action button; narration moves up under the floor tag */
+  body.touch #caption { bottom: calc(80px + env(safe-area-inset-bottom)); }
+  #caption { padding: 10px 14px 9px; }
+  .cap-t { font-size: 15px; } .cap-l { font-size: 12.5px; }
+  #subtitle { top: calc(100px + env(safe-area-inset-top)); bottom: auto; font-size: 13.5px; max-width: 92vw; }
+  #titlecard { top: 24vh; }
+  #tc-big { font-size: clamp(26px, 9vw, 44px); }
+  #tutorial { top: auto; bottom: calc(84px + env(safe-area-inset-bottom)); left: 50%; translate: -50% 0; max-width: calc(100vw - 24px); width: max-content; font-size: 12.5px; }
+  body.has-cap #tutorial { display: none !important; }
+  #tryhint { left: 12px; right: 12px; bottom: calc(84px + env(safe-area-inset-bottom)); max-width: none; font-size: 12px; }
+  body.has-cap #tryhint { display: none !important; }
+  #intro { top: 14vh; }
+  #chat { left: 0; right: 0; bottom: var(--kb, 0px); width: 100%; height: min(72dvh, 560px); border-radius: 18px 18px 0 0;
+    padding-bottom: env(safe-area-inset-bottom); }
+  #panel.card { padding-bottom: calc(18px + env(safe-area-inset-bottom)); }
+  #modal { padding: 22px 18px; max-height: 86dvh; }
+  #hud-btns { gap: 6px; }
+  #hud-btns button { width: 36px; height: 36px; }
+}
+
+/* phones on their side: everything hugs the edges so the room stays visible */
+@media (max-height: 500px) and (orientation: landscape) {
+  #caption, body.touch #caption { left: calc(12px + env(safe-area-inset-left)); bottom: calc(12px + env(safe-area-inset-bottom)); width: min(44vw, 420px);
+    transform: translate(0, 12px); }
+  #caption.on { transform: none; }
+  .cap-m, .cap-h { display: none; }
+  .cap-l { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  #subtitle { top: auto; bottom: calc(76px + env(safe-area-inset-bottom)); left: auto; right: calc(16px + env(safe-area-inset-right));
+    transform: none; max-width: 44vw; text-align: right; font-size: 13px; }
+  #panel.card, #panel { top: 8px; bottom: 8px; right: calc(8px + env(safe-area-inset-right)); left: auto; width: min(460px, 56vw);
+    max-height: none; transform: none; border-radius: 16px; }
+  #chat { left: auto; right: calc(8px + env(safe-area-inset-right)); bottom: 8px; top: 8px; width: min(380px, 52vw); height: auto; }
+  #modal { max-height: 90dvh; padding: 18px; }
+  #titlecard { top: 16vh; }
+  #tutorial, #tryhint { top: calc(74px + env(safe-area-inset-top)); bottom: auto; left: calc(14px + env(safe-area-inset-left)); translate: none; width: auto; max-width: 52vw; }
+  #intro { top: 10vh; }
+  .lb { display: none; }
+  #dir .dir-list { max-height: 50vh; }
+}

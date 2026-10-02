@@ -8,10 +8,14 @@ const UI = {
   els: {}, sayTimer: null, promptShown: null,
 
   init() {
+    // phones and tablets: a coarse pointer and no hover (a touchscreen laptop keeps the desktop controls)
+    UI.touch = matchMedia("(pointer: coarse)").matches || (navigator.maxTouchPoints > 0 && !matchMedia("(pointer: fine)").matches);
+    document.body.classList.toggle("touch", UI.touch);
     const root = document.getElementById("ui");
     root.innerHTML = `
       <div id="hud-floor" class="hidden"></div>
       <div id="hud-btns">
+        <button id="b-chat" title="Ask NOVA (C)">💬</button>
         <button id="b-lift" title="Elevator (F)">🛗</button>
         <button id="b-mute" title="Sound (M)">🔊</button>
         <button id="b-help" title="Help (?)">?</button>
@@ -36,10 +40,20 @@ const UI = {
       <div id="caps" class="hidden"></div>
       <div id="cine" class="hidden"></div>
       <div id="chat" class="hidden"></div>
+      <div id="joy" class="hidden"><i></i></div>
+      <button id="act" class="hidden"><b>◆</b><span></span></button>
     `;
     for (const id of ["hud-floor", "intro", "intro-name", "intro-theme", "nowplaying", "tryhint", "tutorial", "tip", "lb-top", "lb-bot", "titlecard", "tc-big", "tc-small", "prompt", "subtitle", "panel", "bookview", "modal-wrap", "modal", "lift-ov", "lift-f", "lift-n", "died", "died-s", "caps", "cine", "chat"])
       UI.els[id] = document.getElementById(id);
     document.getElementById("b-lift").onclick = () => UI.openElevator();
+    document.getElementById("b-chat").onclick = () => { if (Game.state === "play" && !document.body.classList.contains("cinema")) ChatBot.toggle(); };
+    // on a touchscreen the nearest thing to use is one big button under your right thumb
+    document.getElementById("act").onclick = () => { const it = Game.nearInteract; if (it && Game.state === "play") Game.useInteract(it); };
+    // a phone keyboard shouldn't bury the chat box: track how much of the screen it takes
+    if (window.visualViewport) {
+      const kb = () => document.documentElement.style.setProperty("--kb", visualViewport.scale > 1.01 ? "0px" : Math.max(0, window.innerHeight - visualViewport.height - visualViewport.offsetTop) + "px");
+      visualViewport.addEventListener("resize", kb); visualViewport.addEventListener("scroll", kb);
+    }
     document.getElementById("b-mute").onclick = () => UI.muteToggle();
     document.getElementById("b-help").onclick = () => UI.help();
     ChatBot.init();
@@ -92,9 +106,11 @@ const UI = {
     if (label === UI.promptShown) return;
     UI.promptShown = label;
     const p = UI.els.prompt;
-    if (!label) { p.classList.add("hidden"); return; }
-    p.innerHTML = `<span class="key">E</span>${UI.esc(label)}`;
+    const act = document.getElementById("act");
+    if (!label) { p.classList.add("hidden"); if (act) act.classList.add("hidden"); return; }
+    p.innerHTML = `<span class="key">${UI.touch ? "TAP" : "E"}</span>${UI.esc(label)}`;
     p.classList.remove("hidden");
+    if (act) { act.querySelector("span").textContent = label.split(" — ")[0]; act.classList.remove("hidden"); }
   },
 
   say(text, dur = 4200) {
@@ -141,6 +157,23 @@ const UI = {
   },
 
   help() {
+    if (UI.touch) {
+      UI.openModal(`
+      <button class="x" onclick="UI.closeModal()">✕</button>
+      <h2>Visiting Sparsh HQ</h2>
+      <div class="help-grid">
+        <div><span class="key">tap</span></div><div>walk there · tap a ◆ or the object itself to open its story</div>
+        <div><span class="key">left thumb</span></div><div>drag anywhere on the left to walk</div>
+        <div><span class="key">right thumb</span></div><div>drag to look around · <b>pinch</b> to zoom</div>
+        <div><span class="key">◆ button</span></div><div>bottom-right: use whatever's nearby</div>
+        <div><span class="key">Résumé</span></div><div>the one-page version — everything, fast</div>
+        <div><span class="key">🛗</span></div><div>elevator — five floors</div>
+        <div><span class="key">💬</span></div><div>NOVA, the concierge — ask anything</div>
+        <div><span class="key">F1 tag</span></div><div>top-left: this floor's checklist</div>
+      </div>
+      <p class="muted">Turn your phone sideways for a wider view.</p>`);
+      return;
+    }
     UI.openModal(`
       <button class="x" onclick="UI.closeModal()">✕</button>
       <h2>Visiting Sparsh HQ</h2>
@@ -152,7 +185,7 @@ const UI = {
         <div><span class="key">R</span></div><div>the one-page résumé — everything, fast</div>
         <div><span class="key">Tab</span></div><div>show / hide this floor's checklist</div>
         <div><span class="key">F</span></div><div>elevator — five floors</div>
-        <div><span class="key">C</span></div><div>NOVA, the concierge (Floor 0)</div>
+        <div><span class="key">C</span></div><div>NOVA, the concierge (or 💬, top-right)</div>
         <div><span class="key">M</span></div><div>sound</div>
       </div>
       <p class="muted">The building rewards curiosity. Rumour has it an old cheat code still works.</p>`);
@@ -519,7 +552,7 @@ const Tutorial = {
     const st = CONTENT.tutorial[Tutorial.idx];
     if (!st) { Tutorial.finish(); return; }
     const el = UI.els.tutorial;
-    el.innerHTML = `<span class="tut-dot"></span><span>${UI.esc(st.text)}</span>`;
+    el.innerHTML = `<span class="tut-dot"></span><span>${UI.esc(UI.touch && st.touch ? st.touch : st.text)}</span>`;
     el.classList.remove("hidden", "done");
     if (st.id === "free") setTimeout(() => Tutorial.advance(), 8000);
   },
